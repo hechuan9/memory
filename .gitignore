@@ -1,0 +1,17 @@
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+
+# Local memory state must never be committed.
+*.sqlite3
+*.sqlite
+memory.sqlite3*
+logs/
+skill-candidates/
+config.toml
+.env
+.env.*

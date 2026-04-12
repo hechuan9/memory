@@ -1,0 +1,18 @@
+# Copy this file to $CODEX_HOME/memory/config.toml and edit local paths.
+
+data_dir = "/Users/you/.codex/memory"
+database_path = "/Users/you/.codex/memory/memory.sqlite3"
+global_memory_path = "/Users/you/.codex/memory.md"
+workspace_root = "/path/to/workspace"
+
+repo_names = [
+  "automation",
+  "attio-backup",
+  "backend",
+  "client",
+  "climamind-deployments",
+  "model",
+  "pool-manager",
+  "sales",
+  "website",
+]
