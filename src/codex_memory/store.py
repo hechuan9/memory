@@ -347,6 +347,20 @@ class MemoryStore:
             ).rowcount
         return int(deleted)
 
+    def delete_source_items_except(self, *, source_path: str, keep_item_ids: Sequence[str]) -> int:
+        params: list[object] = [source_path]
+        keep_clause = ""
+        if keep_item_ids:
+            keep_placeholders = ",".join("?" for _ in keep_item_ids)
+            keep_clause = f" AND id NOT IN ({keep_placeholders})"
+            params.extend(keep_item_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT id FROM memory_items WHERE source_path = ?{keep_clause}",
+                params,
+            ).fetchall()
+        return self.delete_items([str(row["id"]) for row in rows])
+
     def update_item_evidence(self, item_id: str, evidence: str) -> bool:
         with self._connect() as connection:
             updated = connection.execute(

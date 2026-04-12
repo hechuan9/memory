@@ -10,6 +10,7 @@ from codex_memory.store import MemoryStore
 class SeedStats:
     indexed_files: int
     indexed_items: int
+    pruned_items: int = 0
 
 
 @dataclass(frozen=True)
@@ -31,10 +32,11 @@ def seed_markdown_sources(
 ) -> SeedStats:
     indexed_files = 0
     indexed_items = 0
+    pruned_items = 0
 
     if global_memory_path and global_memory_path.exists():
         indexed_files += 1
-        indexed_items += _seed_file(
+        seeded, pruned = _seed_file(
             store,
             path=global_memory_path,
             bank_id="global",
@@ -42,12 +44,14 @@ def seed_markdown_sources(
             kind="preference",
             tags=["scope:global"],
         )
+        indexed_items += seeded
+        pruned_items += pruned
 
     if workspace_root:
         agents_path = workspace_root / "AGENTS.md"
         if agents_path.exists():
             indexed_files += 1
-            indexed_items += _seed_file(
+            seeded, pruned = _seed_file(
                 store,
                 path=agents_path,
                 bank_id="global",
@@ -55,12 +59,14 @@ def seed_markdown_sources(
                 kind="constraint",
                 tags=["scope:global", "source:workspace-agents"],
             )
+            indexed_items += seeded
+            pruned_items += pruned
         for repo_name in repo_names:
             memory_path = workspace_root / repo_name / "docs" / "MEMORY.md"
             if not memory_path.exists():
                 continue
             indexed_files += 1
-            indexed_items += _seed_file(
+            seeded, pruned = _seed_file(
                 store,
                 path=memory_path,
                 bank_id=f"repo:{repo_name}",
@@ -68,8 +74,10 @@ def seed_markdown_sources(
                 kind="lesson",
                 tags=[f"repo:{repo_name}", "source:repo-memory"],
             )
+            indexed_items += seeded
+            pruned_items += pruned
 
-    return SeedStats(indexed_files=indexed_files, indexed_items=indexed_items)
+    return SeedStats(indexed_files=indexed_files, indexed_items=indexed_items, pruned_items=pruned_items)
 
 
 def collect_markdown_context(
@@ -147,10 +155,11 @@ def _seed_file(
     repo: str | None,
     kind: str,
     tags: list[str],
-) -> int:
+) -> tuple[int, int]:
     count = 0
+    item_ids: list[str] = []
     for line_number, entry in _entries_from_markdown(path):
-        store.upsert_item(
+        item_id = store.upsert_item(
             bank_id=bank_id,
             repo=repo,
             kind=kind,
@@ -160,8 +169,10 @@ def _seed_file(
             source_anchor=f"line:{line_number}",
             tags=tags,
         )
+        item_ids.append(item_id)
         count += 1
-    return count
+    pruned = store.delete_source_items_except(source_path=str(path), keep_item_ids=item_ids)
+    return count, pruned
 
 
 def _collect_file(

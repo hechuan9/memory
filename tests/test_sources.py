@@ -26,3 +26,20 @@ def test_seed_markdown_sources_indexes_global_workspace_and_repo_memories(tmp_pa
     results = store.recall("training uv", repo="model")
     assert results[0].bank_id == "repo:model"
     assert "Model training uses uv" in results[0].content
+
+
+def test_seed_markdown_sources_prunes_removed_markdown_entries(tmp_path):
+    global_memory = tmp_path / "memory.md"
+    global_memory.write_text("- Keep this rule.\n- Forget ObsoleteZebra rule.\n", encoding="utf-8")
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+
+    first = seed_markdown_sources(store, global_memory_path=global_memory)
+    global_memory.write_text("- Keep this rule.\n", encoding="utf-8")
+    second = seed_markdown_sources(store, global_memory_path=global_memory)
+
+    assert first.pruned_items == 0
+    assert second.pruned_items == 1
+    assert store.count_items() == 1
+    assert store.recall("Keep this rule")
+    assert not store.recall("ObsoleteZebra")

@@ -125,6 +125,7 @@ def cmd_seed(args: argparse.Namespace) -> int:
     payload = {
         "indexed_files": stats.indexed_files,
         "indexed_items": stats.indexed_items,
+        "pruned_items": stats.pruned_items,
         "database_path": str(config.database_path),
     }
     _emit(payload, json_output=args.json)
