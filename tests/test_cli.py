@@ -363,9 +363,7 @@ def test_hook_stop_retains_transcript_session(tmp_path):
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["continue"] is True
-    assert payload["hookSpecificOutput"]["hookEventName"] == "Stop"
-    assert payload["hookSpecificOutput"]["retained"]["events_written"] == 2
+    assert payload == {"continue": True, "suppressOutput": True}
 
     recall = run_cli(
         "recall",
@@ -379,6 +377,25 @@ def test_hook_stop_retains_transcript_session(tmp_path):
     )
     assert recall.returncode == 0, recall.stderr
     assert "backend deploys read docs/ENVIRONMENT.md first" in recall.stdout
+
+
+def test_hook_stop_returns_valid_json_when_transcript_is_null(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{(tmp_path / "memory.sqlite3").as_posix()}"\n',
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "hook",
+        "stop",
+        "--config",
+        str(config),
+        input_text=json.dumps({"hook_event_name": "Stop", "cwd": "/workspace/climamind/backend", "transcript_path": None}),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"continue": True, "suppressOutput": True}
 
 
 def test_retain_session_cli_writes_candidate(tmp_path):

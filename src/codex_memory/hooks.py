@@ -61,8 +61,8 @@ def handle_user_prompt_submit(config: MemoryConfig, store: MemoryStore, payload:
 
 def handle_stop(config: MemoryConfig, store: MemoryStore, payload: dict[str, Any]) -> HookResult:
     transcript_path = Path(str(payload.get("transcript_path") or "")).expanduser()
-    if not transcript_path.exists():
-        return HookResult(_continue_payload("Stop", retained={"events_written": 0, "reason": "missing transcript"}))
+    if not transcript_path.is_file():
+        return HookResult(_stop_continue_payload())
 
     parsed = parse_codex_conversation(
         transcript_path,
@@ -71,9 +71,9 @@ def handle_stop(config: MemoryConfig, store: MemoryStore, payload: dict[str, Any
         max_event_chars=2000,
     )
     if not parsed.events:
-        return HookResult(_continue_payload("Stop", retained={"events_written": 0, "reason": "no safe events"}))
+        return HookResult(_stop_continue_payload())
 
-    session_id = store.retain_session(
+    store.retain_session(
         repo=parsed.repo or infer_repo(payload.get("cwd"), config),
         cwd=parsed.cwd or str(payload.get("cwd") or ""),
         summary=parsed.summary,
@@ -82,17 +82,7 @@ def handle_stop(config: MemoryConfig, store: MemoryStore, payload: dict[str, Any
         tags=["codex-hook", "codex-conversation"],
         session_id=parsed.session_id,
     )
-    return HookResult(
-        _continue_payload(
-            "Stop",
-            retained={
-                "session_id": session_id,
-                "events_written": len(parsed.events),
-                "unsafe_events": parsed.unsafe_events,
-                "noisy_events": parsed.noisy_events,
-            },
-        )
-    )
+    return HookResult(_stop_continue_payload())
 
 
 def infer_repo(cwd_value: object, config: MemoryConfig) -> str | None:
@@ -208,6 +198,10 @@ def _continue_payload(hook_event_name: str, **extra: Any) -> dict[str, Any]:
     hook_output: dict[str, Any] = {"hookEventName": hook_event_name}
     hook_output.update(extra)
     return {"continue": True, "hookSpecificOutput": hook_output}
+
+
+def _stop_continue_payload() -> dict[str, Any]:
+    return {"continue": True, "suppressOutput": True}
 
 
 def loads_hook_payload(raw: str) -> dict[str, Any]:
