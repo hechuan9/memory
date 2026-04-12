@@ -226,6 +226,7 @@ class MemoryStore:
                 """,
                 (session_id, repo, cwd, now, now, summary.strip(), json.dumps(session_tags, ensure_ascii=False)),
             )
+            connection.execute("DELETE FROM session_events WHERE session_id = ?", (session_id,))
             for event in events:
                 content = str(event.get("content", "")).strip()
                 if not content:

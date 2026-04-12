@@ -9,6 +9,7 @@ This repository provides a small Python CLI that indexes existing Markdown memor
 - Indexes durable Markdown sources into a local SQLite + FTS5 store.
 - Recalls scoped memory from a current repository bank plus a global bank.
 - Retains structured session summaries and candidate long-term memories.
+- Imports local Codex archived conversations in explicit dry-run/write migration steps.
 - Drafts skill candidates without installing or modifying real skills.
 
 ## What It Does Not Do
@@ -43,6 +44,16 @@ uv run --python 3.11 codex-memory seed --config "$CODEX_HOME/memory/config.toml"
 uv run --python 3.11 codex-memory recall --repo model --query "What should I read before model training changes?"
 uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.toml"
 ```
+
+Start migration conservatively:
+
+```bash
+uv run --python 3.11 codex-memory seed --config "$CODEX_HOME/memory/config.toml" --json
+uv run --python 3.11 codex-memory import-conversations --config "$CODEX_HOME/memory/config.toml" --since-days 30 --max-files 25 --json
+uv run --python 3.11 codex-memory import-conversations --config "$CODEX_HOME/memory/config.toml" --since-days 30 --max-files 25 --write --json
+```
+
+`import-conversations` defaults to dry-run. It reads local Codex `archived_sessions/*.jsonl`, keeps only user/assistant events that pass the safety scanner, infers `repo:<name>` from the working directory when possible, and does not create long-term memory candidates or edit Markdown truth sources.
 
 Retain a session from JSON:
 

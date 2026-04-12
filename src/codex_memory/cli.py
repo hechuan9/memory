@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_memory.config import MemoryConfig, load_config
+from codex_memory.conversations import import_codex_conversations, stats_payload
 from codex_memory.sources import seed_markdown_sources
 from codex_memory.store import MemoryItem, MemoryStore
 from codex_memory.skills import write_skill_candidate
@@ -45,6 +46,22 @@ def build_parser() -> argparse.ArgumentParser:
     retain.add_argument("--config", help="Path to local config.toml")
     retain.add_argument("--stdin-json", action="store_true", help="Read payload from stdin")
     retain.set_defaults(func=cmd_retain_session)
+
+    import_conversations = subparsers.add_parser(
+        "import-conversations",
+        help="Import local Codex archived conversations in dry-run mode by default",
+    )
+    import_conversations.add_argument("--config", help="Path to local config.toml")
+    import_conversations.add_argument("--codex-home", default=str(Path.home() / ".codex"))
+    import_conversations.add_argument("--input-dir", help="Directory containing Codex archived *.jsonl sessions")
+    import_conversations.add_argument("--since-days", type=int, default=30)
+    import_conversations.add_argument("--repo", default="auto", help="'auto' or an explicit repository name")
+    import_conversations.add_argument("--max-files", type=int, default=25)
+    import_conversations.add_argument("--max-events-per-session", type=int, default=80)
+    import_conversations.add_argument("--write", action="store_true", help="Write imported session events")
+    import_conversations.add_argument("--dry-run", action="store_true", help="Accepted for clarity; this is the default")
+    import_conversations.add_argument("--json", action="store_true")
+    import_conversations.set_defaults(func=cmd_import_conversations)
 
     candidates = subparsers.add_parser("candidates", help="List candidate memories")
     candidates_sub = candidates.add_subparsers(required=True)
@@ -130,6 +147,27 @@ def cmd_retain_session(args: argparse.Namespace) -> int:
         session_id=payload.get("session_id"),
     )
     _emit({"session_id": session_id}, json_output=True)
+    return 0
+
+
+def cmd_import_conversations(args: argparse.Namespace) -> int:
+    if args.write and args.dry_run:
+        raise ValueError("--write and --dry-run cannot be used together")
+    config = _config(args)
+    store = _store(config)
+    input_dir = Path(args.input_dir).expanduser() if args.input_dir else Path(args.codex_home).expanduser() / "archived_sessions"
+    if not input_dir.exists():
+        raise ValueError(f"conversation input directory does not exist: {input_dir}")
+    stats = import_codex_conversations(
+        store,
+        input_dir=input_dir,
+        since_days=args.since_days,
+        repo=args.repo,
+        write=args.write,
+        max_files=args.max_files,
+        max_events_per_session=args.max_events_per_session,
+    )
+    _emit(stats_payload(stats, write=args.write), json_output=args.json)
     return 0
 
 

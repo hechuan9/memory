@@ -20,6 +20,7 @@ def test_all_help_commands_run():
         ("seed", "--help"),
         ("recall", "--help"),
         ("retain-session", "--help"),
+        ("import-conversations", "--help"),
         ("candidates", "--help"),
         ("skill-candidates", "--help"),
         ("status", "--help"),
@@ -105,3 +106,80 @@ def test_retain_session_cli_writes_candidate(tmp_path):
     assert candidates.returncode == 0, candidates.stderr
     output = json.loads(candidates.stdout)
     assert output["candidates"][0]["kind"] == "workflow"
+
+
+def test_import_conversations_cli_dry_run_is_default(tmp_path):
+    config = tmp_path / "config.toml"
+    db_path = tmp_path / "memory.sqlite3"
+    archive = tmp_path / "archived_sessions"
+    archive.mkdir()
+    config.write_text(
+        f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{db_path.as_posix()}"\n',
+        encoding="utf-8",
+    )
+    _write_session(
+        archive / "rollout-sample.jsonl",
+        cwd="/workspace/climamind/backend",
+        messages=[
+            ("user", "Before backend changes, read docs/ENVIRONMENT.md."),
+            ("assistant", "I will check the environment guide first."),
+        ],
+    )
+
+    result = run_cli(
+        "import-conversations",
+        "--config",
+        str(config),
+        "--input-dir",
+        str(archive),
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "dry-run"
+    assert payload["would_write_sessions"] == 1
+    assert payload["sessions_written"] == 0
+
+
+def test_import_conversations_cli_rejects_write_with_dry_run(tmp_path):
+    config = tmp_path / "config.toml"
+    archive = tmp_path / "archived_sessions"
+    archive.mkdir()
+    config.write_text(f'data_dir = "{tmp_path.as_posix()}"\n', encoding="utf-8")
+
+    result = run_cli(
+        "import-conversations",
+        "--config",
+        str(config),
+        "--input-dir",
+        str(archive),
+        "--write",
+        "--dry-run",
+    )
+
+    assert result.returncode == 1
+    assert "--write and --dry-run cannot be used together" in result.stderr
+
+
+def _write_session(path, *, cwd, messages):
+    lines = [
+        {
+            "type": "session_meta",
+            "timestamp": "2026-04-12T00:00:00Z",
+            "payload": {"id": path.stem, "cwd": cwd},
+        }
+    ]
+    for role, text in messages:
+        lines.append(
+            {
+                "type": "response_item",
+                "timestamp": "2026-04-12T00:00:00Z",
+                "payload": {
+                    "type": "message",
+                    "role": role,
+                    "content": [{"type": "input_text", "text": text}],
+                },
+            }
+        )
+    path.write_text("\n".join(json.dumps(line) for line in lines), encoding="utf-8")
