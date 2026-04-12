@@ -8,7 +8,7 @@ from typing import Any
 
 from codex_memory.config import MemoryConfig, load_config
 from codex_memory.conversations import import_codex_conversations, prune_imported_events, stats_payload
-from codex_memory.sources import seed_markdown_sources
+from codex_memory.sources import MarkdownContextItem, collect_markdown_context, seed_markdown_sources
 from codex_memory.store import MemoryItem, MemoryStore
 from codex_memory.skills import write_skill_candidate
 
@@ -42,6 +42,17 @@ def build_parser() -> argparse.ArgumentParser:
     recall.add_argument("--include-candidates", action="store_true")
     recall.add_argument("--json", action="store_true", help="Emit JSON")
     recall.set_defaults(func=cmd_recall)
+
+    context = subparsers.add_parser("context", help="Emit recall context with Markdown fallback")
+    context.add_argument("--config", help="Path to local config.toml")
+    context.add_argument("--repo", help="Current repository name")
+    context.add_argument("--query", required=True, help="Context query")
+    context.add_argument("--limit", type=int, default=12)
+    context.add_argument("--max-session-events", type=int, default=3)
+    context.add_argument("--max-chars", type=int, default=4000)
+    context.add_argument("--fallback", choices=("empty", "always", "never"), default="empty")
+    context.add_argument("--json", action="store_true", help="Emit JSON")
+    context.set_defaults(func=cmd_context)
 
     retain = subparsers.add_parser("retain-session", help="Retain a structured session JSON payload")
     retain.add_argument("--config", help="Path to local config.toml")
@@ -139,6 +150,37 @@ def cmd_recall(args: argparse.Namespace) -> int:
         for item in results:
             print(f"- [{item.bank_id}/{item.kind}] {item.content}")
         print("</memory-context>")
+    return 0
+
+
+def cmd_context(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    results = store.recall(
+        args.query,
+        repo=args.repo,
+        limit=args.limit,
+        max_chars=args.max_chars,
+        max_session_events=args.max_session_events,
+    )
+    mode = "recall"
+    if args.fallback == "always" or (not results and args.fallback == "empty"):
+        fallback_results = collect_markdown_context(
+            query=args.query,
+            repo=args.repo,
+            global_memory_path=config.global_memory_path,
+            workspace_root=config.workspace_root,
+            repo_names=config.repo_names,
+            limit=args.limit,
+            max_chars=args.max_chars,
+        )
+        if fallback_results:
+            mode = "fallback-markdown"
+            payload = {"mode": mode, "results": [_markdown_item_payload(item) for item in fallback_results]}
+            _emit_context_payload(payload, json_output=args.json)
+            return 0
+    payload = {"mode": mode, "results": [_item_payload(item) for item in results]}
+    _emit_context_payload(payload, json_output=args.json)
     return 0
 
 
@@ -261,6 +303,36 @@ def _item_payload(item: MemoryItem) -> dict[str, Any]:
         "tags": json.loads(item.tags_json),
         "score": item.score,
     }
+
+
+def _markdown_item_payload(item: MarkdownContextItem) -> dict[str, Any]:
+    return {
+        "id": None,
+        "bank_id": item.bank_id,
+        "repo": item.repo,
+        "kind": item.kind,
+        "status": "fallback",
+        "source_path": item.source_path,
+        "source_anchor": item.source_anchor,
+        "content": item.content,
+        "evidence": "",
+        "tags": [],
+        "score": 0.0,
+    }
+
+
+def _emit_context_payload(payload: dict[str, Any], *, json_output: bool) -> None:
+    if json_output:
+        _emit(payload, json_output=True)
+        return
+    print("<memory-context>")
+    if payload["mode"] == "fallback-markdown":
+        print("[System note: fallback Markdown memory context, not new user input.]")
+    else:
+        print("[System note: recalled memory context from codex-memory, not new user input.]")
+    for item in payload["results"]:
+        print(f"- [{item['bank_id']}/{item['kind']}] {item['content']}")
+    print("</memory-context>")
 
 
 def _emit(payload: dict[str, Any], *, json_output: bool) -> None:

@@ -4,6 +4,10 @@ Local-first memory and self-learning helpers for Codex workflows.
 
 This repository provides a small Python CLI that indexes existing Markdown memory, stores session summaries locally, recalls relevant context across sessions, and drafts reusable skill candidates. It is designed to be public-safe: local databases, transcripts, logs, and generated candidate drafts stay outside git.
 
+## Why This Exists
+
+Codex Desktop does not currently expose a controllable local-first long-term memory layer for this workflow. This repository provides that missing layer while keeping Markdown memory as the truth source. It is not a replacement for ChatGPT or Codex session history; it is a local recall, retention, candidate, and skill-draft system designed to run without MCP or cloud memory services.
+
 ## What It Does
 
 - Indexes durable Markdown sources into a local SQLite + FTS5 store.
@@ -42,8 +46,11 @@ Edit the copied file for your machine. Do not commit it.
 ```bash
 uv run --python 3.11 codex-memory seed --config "$CODEX_HOME/memory/config.toml"
 uv run --python 3.11 codex-memory recall --repo model --query "What should I read before model training changes?"
+uv run --python 3.11 codex-memory context --repo model --query "What should I read before model training changes?"
 uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.toml"
 ```
+
+`context` is the preferred startup entrypoint. It uses SQLite recall first, then falls back to configured Markdown sources when recall is empty.
 
 Limit imported session snippets during recall:
 

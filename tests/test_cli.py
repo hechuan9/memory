@@ -19,6 +19,7 @@ def test_all_help_commands_run():
         ("--help",),
         ("seed", "--help"),
         ("recall", "--help"),
+        ("context", "--help"),
         ("retain-session", "--help"),
         ("import-conversations", "--help"),
         ("imported-events", "--help"),
@@ -70,6 +71,86 @@ repo_names = ["model"]
     assert recall.returncode == 0, recall.stderr
     payload = json.loads(recall.stdout)
     assert payload["results"][0]["bank_id"] == "repo:model"
+
+
+def test_context_uses_recall_before_markdown_fallback(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "backend"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    db_path = tmp_path / "memory.sqlite3"
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Use Chinese for replies.\n", encoding="utf-8")
+    (workspace / "AGENTS.md").write_text("- Use uv for Python commands.\n", encoding="utf-8")
+    (repo_docs / "MEMORY.md").write_text("- Backend changes run pre_merge_gate.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{db_path.as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["backend"]
+""".strip(),
+        encoding="utf-8",
+    )
+    assert run_cli("seed", "--config", str(config), "--json").returncode == 0
+
+    result = run_cli(
+        "context",
+        "--config",
+        str(config),
+        "--repo",
+        "backend",
+        "--query",
+        "backend pre_merge_gate",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "recall"
+    assert payload["results"][0]["bank_id"] == "repo:backend"
+
+
+def test_context_falls_back_to_markdown_when_recall_is_empty(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "backend"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Use Chinese for replies.\n", encoding="utf-8")
+    (workspace / "AGENTS.md").write_text("- Use uv for Python commands.\n", encoding="utf-8")
+    (repo_docs / "MEMORY.md").write_text("- Backend changes run pre_merge_gate.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["backend"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "context",
+        "--config",
+        str(config),
+        "--repo",
+        "backend",
+        "--query",
+        "backend pre_merge_gate",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "fallback-markdown"
+    assert payload["results"][0]["bank_id"] == "repo:backend"
 
 
 def test_retain_session_cli_writes_candidate(tmp_path):
