@@ -14,6 +14,7 @@ Codex Desktop does not currently expose a controllable local-first long-term mem
 - Recalls scoped memory from a current repository bank plus a global bank.
 - Retains structured session summaries and candidate long-term memories.
 - Imports local Codex archived conversations in explicit dry-run/write migration steps.
+- Connects to Codex lifecycle hooks for automatic local recall and session retention.
 - Drafts skill candidates without installing or modifying real skills.
 
 ## What It Does Not Do
@@ -51,6 +52,16 @@ uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.tom
 ```
 
 `context` is the preferred startup entrypoint. It uses SQLite recall first, then falls back to configured Markdown sources when recall is empty.
+
+Codex lifecycle hooks can call the `hook` subcommands. They read the Codex hook payload from stdin and emit the JSON shape Codex expects:
+
+```bash
+uv run --python 3.11 codex-memory hook session-start --config "$CODEX_HOME/memory/config.toml"
+uv run --python 3.11 codex-memory hook user-prompt-submit --config "$CODEX_HOME/memory/config.toml"
+uv run --python 3.11 codex-memory hook stop --config "$CODEX_HOME/memory/config.toml"
+```
+
+`session-start` and `user-prompt-submit` inject recalled context as additional developer context. `stop` parses the local transcript path from the hook payload and retains safe user/assistant events in SQLite. Hooks still do not edit Markdown truth sources or install skills.
 
 Limit imported session snippets during recall:
 

@@ -20,6 +20,7 @@ def test_all_help_commands_run():
         ("seed", "--help"),
         ("recall", "--help"),
         ("context", "--help"),
+        ("hook", "--help"),
         ("retain-session", "--help"),
         ("import-conversations", "--help"),
         ("imported-events", "--help"),
@@ -151,6 +152,130 @@ repo_names = ["backend"]
     payload = json.loads(result.stdout)
     assert payload["mode"] == "fallback-markdown"
     assert payload["results"][0]["bank_id"] == "repo:backend"
+
+
+def test_hook_session_start_emits_additional_context(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "backend"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Always reply in Chinese.\n", encoding="utf-8")
+    (workspace / "AGENTS.md").write_text("- Use uv for Python commands.\n", encoding="utf-8")
+    (repo_docs / "MEMORY.md").write_text("- Backend changes run pre_merge_gate.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["backend"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "hook",
+        "session-start",
+        "--config",
+        str(config),
+        input_text=json.dumps({"hook_event_name": "SessionStart", "cwd": str(repo), "source": "startup"}),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    context = payload["hookSpecificOutput"]["additionalContext"]
+    assert payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "recalled memory context" in context
+    assert "Backend changes run pre_merge_gate" in context
+
+
+def test_hook_user_prompt_submit_uses_prompt_as_query(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "model"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
+    (repo_docs / "MEMORY.md").write_text("- Model runs must use AWS training pool.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["model"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "hook",
+        "user-prompt-submit",
+        "--config",
+        str(config),
+        input_text=json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": str(repo),
+                "prompt": "start model training",
+            }
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    context = payload["hookSpecificOutput"]["additionalContext"]
+    assert payload["hookSpecificOutput"]["hookEventName"] == "UserPromptSubmit"
+    assert "Model runs must use AWS training pool" in context
+
+
+def test_hook_stop_retains_transcript_session(tmp_path):
+    config = tmp_path / "config.toml"
+    transcript = tmp_path / "session.jsonl"
+    config.write_text(
+        f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{(tmp_path / "memory.sqlite3").as_posix()}"\n',
+        encoding="utf-8",
+    )
+    _write_session(
+        transcript,
+        cwd="/workspace/climamind/backend",
+        messages=[
+            ("user", "Remember that backend deploys read docs/ENVIRONMENT.md first."),
+            ("assistant", "I will use that as the deploy starting point."),
+        ],
+    )
+
+    result = run_cli(
+        "hook",
+        "stop",
+        "--config",
+        str(config),
+        input_text=json.dumps({"hook_event_name": "Stop", "cwd": "/workspace/climamind/backend", "transcript_path": str(transcript)}),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["continue"] is True
+    assert payload["hookSpecificOutput"]["hookEventName"] == "Stop"
+    assert payload["hookSpecificOutput"]["retained"]["events_written"] == 2
+
+    recall = run_cli(
+        "recall",
+        "--config",
+        str(config),
+        "--repo",
+        "backend",
+        "--query",
+        "backend deploy environment",
+        "--json",
+    )
+    assert recall.returncode == 0, recall.stderr
+    assert "backend deploys read docs/ENVIRONMENT.md first" in recall.stdout
 
 
 def test_retain_session_cli_writes_candidate(tmp_path):

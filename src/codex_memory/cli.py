@@ -8,6 +8,12 @@ from typing import Any
 
 from codex_memory.config import MemoryConfig, load_config
 from codex_memory.conversations import import_codex_conversations, prune_imported_events, stats_payload
+from codex_memory.hooks import (
+    handle_session_start,
+    handle_stop,
+    handle_user_prompt_submit,
+    loads_hook_payload,
+)
 from codex_memory.sources import MarkdownContextItem, collect_markdown_context, seed_markdown_sources
 from codex_memory.store import MemoryItem, MemoryStore
 from codex_memory.skills import write_skill_candidate
@@ -53,6 +59,19 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--fallback", choices=("empty", "always", "never"), default="empty")
     context.add_argument("--json", action="store_true", help="Emit JSON")
     context.set_defaults(func=cmd_context)
+
+    hook = subparsers.add_parser("hook", help="Run Codex lifecycle hook handlers")
+    hook.add_argument("--config", help="Path to local config.toml")
+    hook_sub = hook.add_subparsers(required=True)
+    hook_session_start = hook_sub.add_parser("session-start", help="Handle Codex SessionStart hook")
+    hook_session_start.add_argument("--config", help="Path to local config.toml")
+    hook_session_start.set_defaults(func=cmd_hook_session_start)
+    hook_user_prompt = hook_sub.add_parser("user-prompt-submit", help="Handle Codex UserPromptSubmit hook")
+    hook_user_prompt.add_argument("--config", help="Path to local config.toml")
+    hook_user_prompt.set_defaults(func=cmd_hook_user_prompt_submit)
+    hook_stop = hook_sub.add_parser("stop", help="Handle Codex Stop hook")
+    hook_stop.add_argument("--config", help="Path to local config.toml")
+    hook_stop.set_defaults(func=cmd_hook_stop)
 
     retain = subparsers.add_parser("retain-session", help="Retain a structured session JSON payload")
     retain.add_argument("--config", help="Path to local config.toml")
@@ -201,6 +220,30 @@ def cmd_retain_session(args: argparse.Namespace) -> int:
         session_id=payload.get("session_id"),
     )
     _emit({"session_id": session_id}, json_output=True)
+    return 0
+
+
+def cmd_hook_session_start(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    result = handle_session_start(config, store, loads_hook_payload(sys.stdin.read()))
+    _emit(result.payload, json_output=True)
+    return 0
+
+
+def cmd_hook_user_prompt_submit(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    result = handle_user_prompt_submit(config, store, loads_hook_payload(sys.stdin.read()))
+    _emit(result.payload, json_output=True)
+    return 0
+
+
+def cmd_hook_stop(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    result = handle_stop(config, store, loads_hook_payload(sys.stdin.read()))
+    _emit(result.payload, json_output=True)
     return 0
 
 
