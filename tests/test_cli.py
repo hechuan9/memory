@@ -234,6 +234,47 @@ repo_names = ["model"]
     assert "Model runs must use AWS training pool" in context
 
 
+def test_hook_user_prompt_submit_falls_back_for_chinese_prompt(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "model"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
+    (repo_docs / "MEMORY.md").write_text("- Model runs must use AWS training pool.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["model"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "hook",
+        "user-prompt-submit",
+        "--config",
+        str(config),
+        input_text=json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": str(repo),
+                "prompt": "启动训练前要注意什么",
+            }
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    context = payload["hookSpecificOutput"]["additionalContext"]
+    assert "Model runs must use AWS training pool" in context
+
+
 def test_hook_stop_retains_transcript_session(tmp_path):
     config = tmp_path / "config.toml"
     transcript = tmp_path / "session.jsonl"

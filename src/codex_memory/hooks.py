@@ -7,7 +7,7 @@ from typing import Any
 
 from codex_memory.config import MemoryConfig
 from codex_memory.conversations import parse_codex_conversation
-from codex_memory.sources import seed_markdown_sources
+from codex_memory.sources import MarkdownContextItem, collect_markdown_context, seed_markdown_sources
 from codex_memory.store import MemoryItem, MemoryStore
 
 
@@ -25,7 +25,7 @@ def handle_session_start(config: MemoryConfig, store: MemoryStore, payload: dict
         repo_names=config.repo_names,
     )
     query = f"{repo or ''} workspace memory rules preferences".strip()
-    context = recall_context(store, repo=repo, query=query)
+    context = recall_context(config, store, repo=repo, query=query)
     return HookResult(_additional_context_payload("SessionStart", context))
 
 
@@ -40,7 +40,8 @@ def handle_user_prompt_submit(config: MemoryConfig, store: MemoryStore, payload:
         workspace_root=config.workspace_root,
         repo_names=config.repo_names,
     )
-    context = recall_context(store, repo=repo, query=prompt)
+    query = f"{repo or ''} {prompt}".strip()
+    context = recall_context(config, store, repo=repo, query=query)
     return HookResult(_additional_context_payload("UserPromptSubmit", context))
 
 
@@ -99,7 +100,15 @@ def infer_repo(cwd_value: object, config: MemoryConfig) -> str | None:
     return None
 
 
-def recall_context(store: MemoryStore, *, repo: str | None, query: str, limit: int = 12, max_chars: int = 4000) -> str:
+def recall_context(
+    config: MemoryConfig,
+    store: MemoryStore,
+    *,
+    repo: str | None,
+    query: str,
+    limit: int = 12,
+    max_chars: int = 4000,
+) -> str:
     results = store.recall(
         query,
         repo=repo,
@@ -107,15 +116,29 @@ def recall_context(store: MemoryStore, *, repo: str | None, query: str, limit: i
         max_chars=max_chars,
         max_session_events=3,
     )
-    if not results:
+    if results:
+        return format_context(results)
+
+    fallback_results = collect_markdown_context(
+        query=query,
+        repo=repo,
+        global_memory_path=config.global_memory_path,
+        workspace_root=config.workspace_root,
+        repo_names=config.repo_names,
+        limit=limit,
+        max_chars=max_chars,
+    )
+    if not fallback_results:
         return ""
-    return format_context(results)
+    return format_context(fallback_results, fallback=True)
 
 
-def format_context(results: list[MemoryItem]) -> str:
+def format_context(results: list[MemoryItem] | list[MarkdownContextItem], *, fallback: bool = False) -> str:
     lines = [
         "<memory-context>",
-        "[System note: recalled memory context from codex-memory, not new user input.]",
+        "[System note: recalled memory context from codex-memory, not new user input.]"
+        if not fallback
+        else "[System note: fallback Markdown memory context, not new user input.]",
     ]
     for item in results:
         lines.append(f"- [{item.bank_id}/{item.kind}] {item.content}")
