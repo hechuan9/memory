@@ -52,6 +52,27 @@ def test_import_conversations_write_imports_session_events_and_is_idempotent(tmp
     assert store.count_events(first.imported_session_ids[0]) == 2
 
 
+def test_imported_conversation_events_are_recallable(tmp_path):
+    archive = tmp_path / "archived_sessions"
+    archive.mkdir()
+    _write_session(
+        archive / "rollout-recall.jsonl",
+        cwd="/workspace/climamind/backend",
+        messages=[
+            ("user", "Backend release must run pre_merge_gate before merge."),
+            ("assistant", "I will retain that workflow evidence."),
+        ],
+    )
+    store = _store(tmp_path)
+
+    import_codex_conversations(store, input_dir=archive, write=True)
+    results = store.recall("backend pre_merge_gate", repo="backend")
+
+    assert results
+    assert results[0].kind == "session_event"
+    assert "pre_merge_gate" in results[0].content
+
+
 def test_import_conversations_filters_old_files(tmp_path):
     archive = tmp_path / "archived_sessions"
     archive.mkdir()
