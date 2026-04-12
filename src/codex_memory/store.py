@@ -341,6 +341,20 @@ class MemoryStore:
             ).rowcount
         return int(deleted)
 
+    def update_item_evidence(self, item_id: str, evidence: str) -> bool:
+        with self._connect() as connection:
+            updated = connection.execute(
+                """
+                UPDATE memory_items
+                SET evidence = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (evidence.strip(), _now(), item_id),
+            ).rowcount
+            if updated:
+                self._sync_fts(connection, item_id)
+        return bool(updated)
+
 
 def _hash_parts(*parts: str) -> str:
     digest = hashlib.sha256()

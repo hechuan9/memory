@@ -130,6 +130,31 @@ def test_prune_imported_events_dry_run_then_apply(tmp_path):
     assert keep_id != noisy_id
 
 
+def test_prune_imported_events_sanitizes_noisy_evidence_without_deleting_content(tmp_path):
+    store = _store(tmp_path)
+    store.upsert_item(
+        bank_id="global",
+        kind="session_event",
+        status="active",
+        content="Useful lesson: report stale locks before continuing.",
+        evidence="# AGENTS.md instructions for /workspace\n<INSTRUCTIONS>\nnoise\n</INSTRUCTIONS>",
+        tags=["imported", "codex-conversation", "role:assistant"],
+    )
+
+    dry_run = prune_imported_events(store, apply=False)
+    assert dry_run.matched == 1
+    assert dry_run.pruned == 0
+    assert dry_run.sanitized == 0
+
+    applied = prune_imported_events(store, apply=True)
+    assert applied.matched == 1
+    assert applied.pruned == 0
+    assert applied.sanitized == 1
+    assert store.count_items() == 1
+    assert store.recall("stale locks")
+    assert not store.recall("AGENTS instructions")
+
+
 def test_import_conversations_filters_old_files(tmp_path):
     archive = tmp_path / "archived_sessions"
     archive.mkdir()

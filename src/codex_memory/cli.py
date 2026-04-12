@@ -188,6 +188,7 @@ def cmd_imported_events_prune(args: argparse.Namespace) -> int:
         "mode": "apply" if args.apply else "dry-run",
         "matched": stats.matched,
         "pruned": stats.pruned,
+        "sanitized": stats.sanitized,
         "item_ids": stats.item_ids,
     }
     _emit(payload, json_output=args.json)

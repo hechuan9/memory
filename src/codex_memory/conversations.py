@@ -52,6 +52,7 @@ class ConversationImportStats:
 class PruneImportedEventsStats:
     matched: int
     pruned: int
+    sanitized: int
     item_ids: list[str]
 
 
@@ -108,9 +109,24 @@ def import_codex_conversations(
 
 def prune_imported_events(store: MemoryStore, *, apply: bool = False, limit: int = 500) -> PruneImportedEventsStats:
     items = store.list_imported_session_event_items(limit=limit)
-    item_ids = [item.id for item in items if is_context_noise(item.content) or is_context_noise(item.evidence)]
-    pruned = store.delete_items(item_ids) if apply else 0
-    return PruneImportedEventsStats(matched=len(item_ids), pruned=pruned, item_ids=item_ids)
+    delete_ids = [item.id for item in items if is_context_noise(item.content)]
+    sanitize_ids = [
+        item.id
+        for item in items
+        if item.id not in delete_ids and item.evidence and is_context_noise(item.evidence)
+    ]
+    pruned = store.delete_items(delete_ids) if apply else 0
+    sanitized = 0
+    if apply:
+        for item_id in sanitize_ids:
+            if store.update_item_evidence(item_id, ""):
+                sanitized += 1
+    return PruneImportedEventsStats(
+        matched=len(delete_ids) + len(sanitize_ids),
+        pruned=pruned,
+        sanitized=sanitized,
+        item_ids=[*delete_ids, *sanitize_ids],
+    )
 
 
 def parse_codex_conversation(
