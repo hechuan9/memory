@@ -11,6 +11,20 @@ from codex_memory.sources import MarkdownContextItem, collect_markdown_context, 
 from codex_memory.store import MemoryItem, MemoryStore
 
 
+HOOK_RECALL_LIMIT = 6
+HOOK_RECALL_SEARCH_LIMIT = HOOK_RECALL_LIMIT * 3
+HOOK_RECALL_MAX_CHARS = 2000
+HOOK_RECALL_SEARCH_CHARS = HOOK_RECALL_MAX_CHARS * 2
+
+_BOILERPLATE_MARKERS = (
+    "本文件是",
+    "这里只记录",
+    "workspace root agENTS",
+    "project-doc",
+    "长期工程记忆",
+)
+
+
 @dataclass(frozen=True)
 class HookResult:
     payload: dict[str, Any]
@@ -106,16 +120,17 @@ def recall_context(
     *,
     repo: str | None,
     query: str,
-    limit: int = 12,
-    max_chars: int = 4000,
+    limit: int = HOOK_RECALL_LIMIT,
+    max_chars: int = HOOK_RECALL_MAX_CHARS,
 ) -> str:
     results = store.recall(
         query,
         repo=repo,
-        limit=limit,
-        max_chars=max_chars,
+        limit=HOOK_RECALL_SEARCH_LIMIT,
+        max_chars=HOOK_RECALL_SEARCH_CHARS,
         max_session_events=3,
     )
+    results = _trim_hook_items(_filter_hook_items(results), limit=limit, max_chars=max_chars)
     if results:
         return format_context(results)
 
@@ -125,9 +140,10 @@ def recall_context(
         global_memory_path=config.global_memory_path,
         workspace_root=config.workspace_root,
         repo_names=config.repo_names,
-        limit=limit,
-        max_chars=max_chars,
+        limit=HOOK_RECALL_SEARCH_LIMIT,
+        max_chars=HOOK_RECALL_SEARCH_CHARS,
     )
+    fallback_results = _trim_hook_items(_filter_hook_items(fallback_results), limit=limit, max_chars=max_chars)
     if not fallback_results:
         return ""
     return format_context(fallback_results, fallback=True)
@@ -144,6 +160,36 @@ def format_context(results: list[MemoryItem] | list[MarkdownContextItem], *, fal
         lines.append(f"- [{item.bank_id}/{item.kind}] {item.content}")
     lines.append("</memory-context>")
     return "\n".join(lines)
+
+
+def _filter_hook_items(
+    items: list[MemoryItem] | list[MarkdownContextItem],
+) -> list[MemoryItem] | list[MarkdownContextItem]:
+    return [item for item in items if not _is_boilerplate(item.content)]
+
+
+def _trim_hook_items(
+    items: list[MemoryItem] | list[MarkdownContextItem],
+    *,
+    limit: int,
+    max_chars: int,
+) -> list[MemoryItem] | list[MarkdownContextItem]:
+    output = []
+    total = 0
+    for item in items:
+        projected = total + len(item.content)
+        if output and projected > max_chars:
+            break
+        output.append(item)
+        total = projected
+        if len(output) >= limit:
+            break
+    return output
+
+
+def _is_boilerplate(content: str) -> bool:
+    lowered = content.lower()
+    return any(marker.lower() in lowered for marker in _BOILERPLATE_MARKERS)
 
 
 def _additional_context_payload(hook_event_name: str, context: str) -> dict[str, Any]:

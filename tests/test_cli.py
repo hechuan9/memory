@@ -275,6 +275,68 @@ repo_names = ["model"]
     assert "Model runs must use AWS training pool" in context
 
 
+def test_hook_user_prompt_submit_filters_boilerplate_and_caps_context(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "model"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
+    (repo_docs / "MEMORY.md").write_text(
+        "\n".join(
+            [
+                "- 本文件是 `model` 的仓库级长期工程记忆。",
+                "- 这里只记录 `model` 特有、可复用、能避免同类问题重复发生的稳定教训。",
+                "- Model training starts from docs/ENVIRONMENT.md and uses AWS training pool.",
+                "- Model publish checks must compare evaluation summaries before promotion.",
+                "- Model container paths must point at /workspace/model.",
+                "- Model cleanup must preserve selected artifacts.",
+                "- Model release notes must mention the selected model version.",
+                "- Model fallback rules must not hide invalid action failures.",
+                "- Model dataset changes must update architecture docs.",
+                "- Model smoke tests must finish before promotion.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["model"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "hook",
+        "user-prompt-submit",
+        "--config",
+        str(config),
+        input_text=json.dumps(
+            {
+                "hook_event_name": "UserPromptSubmit",
+                "cwd": str(repo),
+                "prompt": "start model training",
+            }
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    memory_lines = [line for line in context.splitlines() if line.startswith("- ")]
+    assert len(memory_lines) <= 6
+    assert "本文件是" not in context
+    assert "这里只记录" not in context
+    assert len(context) <= 2200
+    assert "Model training starts from docs/ENVIRONMENT.md" in context
+
+
 def test_hook_stop_retains_transcript_session(tmp_path):
     config = tmp_path / "config.toml"
     transcript = tmp_path / "session.jsonl"
