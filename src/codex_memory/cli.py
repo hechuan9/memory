@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from codex_memory.config import MemoryConfig, load_config
-from codex_memory.conversations import import_codex_conversations, stats_payload
+from codex_memory.conversations import import_codex_conversations, prune_imported_events, stats_payload
 from codex_memory.sources import seed_markdown_sources
 from codex_memory.store import MemoryItem, MemoryStore
 from codex_memory.skills import write_skill_candidate
@@ -62,6 +62,15 @@ def build_parser() -> argparse.ArgumentParser:
     import_conversations.add_argument("--dry-run", action="store_true", help="Accepted for clarity; this is the default")
     import_conversations.add_argument("--json", action="store_true")
     import_conversations.set_defaults(func=cmd_import_conversations)
+
+    imported_events = subparsers.add_parser("imported-events", help="Inspect or prune imported session events")
+    imported_events_sub = imported_events.add_subparsers(required=True)
+    imported_events_prune = imported_events_sub.add_parser("prune", help="Prune noisy imported session events")
+    imported_events_prune.add_argument("--config", help="Path to local config.toml")
+    imported_events_prune.add_argument("--apply", action="store_true", help="Delete matched event items from recall index")
+    imported_events_prune.add_argument("--limit", type=int, default=500)
+    imported_events_prune.add_argument("--json", action="store_true")
+    imported_events_prune.set_defaults(func=cmd_imported_events_prune)
 
     candidates = subparsers.add_parser("candidates", help="List candidate memories")
     candidates_sub = candidates.add_subparsers(required=True)
@@ -168,6 +177,20 @@ def cmd_import_conversations(args: argparse.Namespace) -> int:
         max_events_per_session=args.max_events_per_session,
     )
     _emit(stats_payload(stats, write=args.write), json_output=args.json)
+    return 0
+
+
+def cmd_imported_events_prune(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    stats = prune_imported_events(store, apply=args.apply, limit=args.limit)
+    payload = {
+        "mode": "apply" if args.apply else "dry-run",
+        "matched": stats.matched,
+        "pruned": stats.pruned,
+        "item_ids": stats.item_ids,
+    }
+    _emit(payload, json_output=args.json)
     return 0
 
 

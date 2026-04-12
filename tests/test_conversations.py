@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 
-from codex_memory.conversations import import_codex_conversations
+from codex_memory.conversations import import_codex_conversations, prune_imported_events
 from codex_memory.store import MemoryStore
 
 
@@ -71,6 +71,63 @@ def test_imported_conversation_events_are_recallable(tmp_path):
     assert results
     assert results[0].kind == "session_event"
     assert "pre_merge_gate" in results[0].content
+
+
+def test_import_conversations_skips_context_noise(tmp_path):
+    archive = tmp_path / "archived_sessions"
+    archive.mkdir()
+    _write_session(
+        archive / "rollout-noise.jsonl",
+        cwd="/workspace/climamind/automation",
+        messages=[
+            ("user", "# AGENTS.md instructions for /workspace\n<INSTRUCTIONS>\nnoise\n</INSTRUCTIONS>"),
+            ("user", "Automation: daily memory dream\nAutomation ID: automation-3"),
+            ("assistant", "Useful lesson: stale locks should be reported before continuing."),
+        ],
+    )
+    store = _store(tmp_path)
+
+    stats = import_codex_conversations(store, input_dir=archive, write=True)
+    results = store.recall("stale locks", repo="automation")
+
+    assert stats.safe_events == 1
+    assert stats.noisy_events == 2
+    assert stats.events_written == 1
+    assert len(results) == 1
+    assert results[0].kind == "session_event"
+
+
+def test_prune_imported_events_dry_run_then_apply(tmp_path):
+    store = _store(tmp_path)
+    noisy_id = store.upsert_item(
+        bank_id="global",
+        kind="session_event",
+        status="active",
+        content="Automation: daily memory dream\nAutomation ID: automation-3",
+        evidence="Imported session summary",
+        tags=["imported", "codex-conversation", "role:user"],
+    )
+    keep_id = store.upsert_item(
+        bank_id="global",
+        kind="session_event",
+        status="active",
+        content="Useful lesson: report stale locks before continuing.",
+        evidence="Imported session summary",
+        tags=["imported", "codex-conversation", "role:assistant"],
+    )
+
+    dry_run = prune_imported_events(store, apply=False)
+    assert dry_run.matched == 1
+    assert dry_run.pruned == 0
+    assert dry_run.item_ids == [noisy_id]
+    assert store.count_items() == 2
+
+    applied = prune_imported_events(store, apply=True)
+    assert applied.matched == 1
+    assert applied.pruned == 1
+    assert store.count_items() == 1
+    assert store.recall("stale locks")
+    assert keep_id != noisy_id
 
 
 def test_import_conversations_filters_old_files(tmp_path):

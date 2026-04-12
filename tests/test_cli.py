@@ -21,6 +21,7 @@ def test_all_help_commands_run():
         ("recall", "--help"),
         ("retain-session", "--help"),
         ("import-conversations", "--help"),
+        ("imported-events", "--help"),
         ("candidates", "--help"),
         ("skill-candidates", "--help"),
         ("status", "--help"),
@@ -160,6 +161,37 @@ def test_import_conversations_cli_rejects_write_with_dry_run(tmp_path):
 
     assert result.returncode == 1
     assert "--write and --dry-run cannot be used together" in result.stderr
+
+
+def test_imported_events_prune_cli_dry_run(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{(tmp_path / "memory.sqlite3").as_posix()}"\n',
+        encoding="utf-8",
+    )
+    retained = run_cli(
+        "retain-session",
+        "--config",
+        str(config),
+        "--stdin-json",
+        input_text=json.dumps(
+            {
+                "repo": "automation",
+                "summary": "Imported noisy event",
+                "events": [{"role": "user", "content": "Automation: daily memory dream\nAutomation ID: automation-3"}],
+                "tags": ["imported", "codex-conversation"],
+            }
+        ),
+    )
+    assert retained.returncode == 0, retained.stderr
+
+    result = run_cli("imported-events", "prune", "--config", str(config), "--json")
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "dry-run"
+    assert payload["matched"] == 1
+    assert payload["pruned"] == 0
 
 
 def _write_session(path, *, cwd, messages):

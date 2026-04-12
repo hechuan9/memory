@@ -29,6 +29,7 @@ class ParsedConversation:
     summary: str
     events: tuple[ConversationEvent, ...]
     unsafe_events: int
+    noisy_events: int
 
 
 @dataclass
@@ -39,11 +40,19 @@ class ConversationImportStats:
     events_seen: int = 0
     safe_events: int = 0
     unsafe_events: int = 0
+    noisy_events: int = 0
     sessions_written: int = 0
     events_written: int = 0
     would_write_sessions: int = 0
     would_write_events: int = 0
     imported_session_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class PruneImportedEventsStats:
+    matched: int
+    pruned: int
+    item_ids: list[str]
 
 
 def import_codex_conversations(
@@ -71,9 +80,10 @@ def import_codex_conversations(
             max_events=max_events_per_session,
             max_event_chars=max_event_chars,
         )
-        stats.events_seen += len(parsed.events) + parsed.unsafe_events
+        stats.events_seen += len(parsed.events) + parsed.unsafe_events + parsed.noisy_events
         stats.safe_events += len(parsed.events)
         stats.unsafe_events += parsed.unsafe_events
+        stats.noisy_events += parsed.noisy_events
         if not parsed.events:
             continue
         stats.sessions_importable += 1
@@ -96,6 +106,13 @@ def import_codex_conversations(
     return stats
 
 
+def prune_imported_events(store: MemoryStore, *, apply: bool = False, limit: int = 500) -> PruneImportedEventsStats:
+    items = store.list_imported_session_event_items(limit=limit)
+    item_ids = [item.id for item in items if is_context_noise(item.content) or is_context_noise(item.evidence)]
+    pruned = store.delete_items(item_ids) if apply else 0
+    return PruneImportedEventsStats(matched=len(item_ids), pruned=pruned, item_ids=item_ids)
+
+
 def parse_codex_conversation(
     path: Path,
     *,
@@ -107,6 +124,7 @@ def parse_codex_conversation(
     source_session_id: str | None = None
     events: list[ConversationEvent] = []
     unsafe_events = 0
+    noisy_events = 0
 
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         if not raw_line.strip():
@@ -131,6 +149,9 @@ def parse_codex_conversation(
         content = _extract_text(payload.get("content")).strip()
         if not content:
             continue
+        if is_context_noise(content):
+            noisy_events += 1
+            continue
         try:
             validate_retain_content(content, max_chars=max(len(content), 1))
         except UnsafeContentError:
@@ -150,6 +171,7 @@ def parse_codex_conversation(
         summary=_summary(path, events),
         events=tuple(events),
         unsafe_events=unsafe_events,
+        noisy_events=noisy_events,
     )
 
 
@@ -162,6 +184,7 @@ def stats_payload(stats: ConversationImportStats, *, write: bool) -> dict[str, A
         "events_seen": stats.events_seen,
         "safe_events": stats.safe_events,
         "unsafe_events": stats.unsafe_events,
+        "noisy_events": stats.noisy_events,
         "would_write_sessions": stats.would_write_sessions,
         "would_write_events": stats.would_write_events,
         "sessions_written": stats.sessions_written,
@@ -183,6 +206,17 @@ def _extract_text(content: Any) -> str:
         if isinstance(text, str):
             parts.append(text)
     return "\n\n".join(parts)
+
+
+def is_context_noise(content: str) -> bool:
+    text = content.strip()
+    if text.startswith("# AGENTS.md instructions") and "<INSTRUCTIONS>" in text:
+        return True
+    if text.startswith("Automation:") and "Automation ID:" in text:
+        return True
+    if text.startswith("Automation ID:"):
+        return True
+    return "::inbox-item{" in text
 
 
 def _infer_repo(cwd: str | None) -> str | None:

@@ -304,6 +304,43 @@ class MemoryStore:
                 ).fetchone()[0]
             )
 
+    def list_imported_session_event_items(self, *, limit: int = 500) -> list[MemoryItem]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT *, 0.0 AS rank FROM memory_items
+                WHERE kind = 'session_event'
+                  AND tags_json LIKE '%"imported"%'
+                  AND tags_json LIKE '%"codex-conversation"%'
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [_row_to_item(row) for row in rows]
+
+    def delete_items(self, item_ids: Sequence[str]) -> int:
+        if not item_ids:
+            return 0
+        placeholders = ",".join("?" for _ in item_ids)
+        with self._connect() as connection:
+            rowids = [
+                int(row["rowid"])
+                for row in connection.execute(
+                    f"SELECT rowid FROM memory_items WHERE id IN ({placeholders})",
+                    list(item_ids),
+                ).fetchall()
+            ]
+            if not rowids:
+                return 0
+            rowid_placeholders = ",".join("?" for _ in rowids)
+            connection.execute(f"DELETE FROM memory_items_fts WHERE rowid IN ({rowid_placeholders})", rowids)
+            deleted = connection.execute(
+                f"DELETE FROM memory_items WHERE id IN ({placeholders})",
+                list(item_ids),
+            ).rowcount
+        return int(deleted)
+
 
 def _hash_parts(*parts: str) -> str:
     digest = hashlib.sha256()
