@@ -86,6 +86,32 @@ def test_recall_prioritizes_repo_then_global_and_hides_candidates(tmp_path):
     assert all(item.status == "active" for item in results)
 
 
+def test_recall_prioritizes_durable_memory_before_session_events(tmp_path):
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+    store.upsert_item(
+        bank_id="repo:backend",
+        repo="backend",
+        kind="session_event",
+        status="active",
+        content="backend ENVIRONMENT uv architecture pre_merge_gate " * 8,
+        tags=["repo:backend", "imported", "codex-conversation"],
+    )
+    store.upsert_item(
+        bank_id="repo:backend",
+        repo="backend",
+        kind="lesson",
+        status="active",
+        content="Backend changes must read docs/ENVIRONMENT.md and run pre_merge_gate.",
+        source_path="/workspace/backend/docs/MEMORY.md",
+        tags=["repo:backend", "source:repo-memory"],
+    )
+
+    results = store.recall("backend ENVIRONMENT uv architecture pre_merge_gate", repo="backend", limit=2)
+
+    assert [item.kind for item in results] == ["lesson", "session_event"]
+
+
 def test_recall_can_include_candidates_when_requested(tmp_path):
     store = MemoryStore(tmp_path / "memory.sqlite3")
     store.initialize()

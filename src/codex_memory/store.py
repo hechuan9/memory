@@ -196,6 +196,7 @@ class MemoryStore:
                   AND m.status IN ({status_placeholders})
                 ORDER BY
                   CASE WHEN m.bank_id = ? THEN 0 WHEN m.bank_id = 'global' THEN 1 ELSE 2 END,
+                  CASE WHEN m.kind = 'session_event' THEN 1 WHEN m.status = 'candidate' THEN 2 ELSE 0 END,
                   rank
                 LIMIT ?
                 """,
