@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     recall.add_argument("--repo", help="Current repository name")
     recall.add_argument("--query", required=True, help="Recall query")
     recall.add_argument("--limit", type=int, default=12)
+    recall.add_argument("--max-session-events", type=int, default=3)
     recall.add_argument("--include-candidates", action="store_true")
     recall.add_argument("--json", action="store_true", help="Emit JSON")
     recall.set_defaults(func=cmd_recall)
@@ -127,6 +128,7 @@ def cmd_recall(args: argparse.Namespace) -> int:
         repo=args.repo,
         limit=args.limit,
         include_candidates=args.include_candidates,
+        max_session_events=args.max_session_events,
     )
     payload = {"results": [_item_payload(item) for item in results]}
     if args.json:

@@ -112,6 +112,33 @@ def test_recall_prioritizes_durable_memory_before_session_events(tmp_path):
     assert [item.kind for item in results] == ["lesson", "session_event"]
 
 
+def test_recall_limits_session_event_supplements(tmp_path):
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+    store.upsert_item(
+        bank_id="repo:automation",
+        repo="automation",
+        kind="lesson",
+        status="active",
+        content="Automation memory dream should keep durable Markdown first.",
+        tags=["repo:automation", "source:repo-memory"],
+    )
+    for index in range(5):
+        store.upsert_item(
+            bank_id="repo:automation",
+            repo="automation",
+            kind="session_event",
+            status="active",
+            content=f"Automation memory dream imported session event {index}.",
+            tags=["repo:automation", "imported", "codex-conversation"],
+        )
+
+    results = store.recall("automation memory dream imported", repo="automation", limit=10, max_session_events=2)
+
+    assert [item.kind for item in results].count("lesson") == 1
+    assert [item.kind for item in results].count("session_event") == 2
+
+
 def test_recall_can_include_candidates_when_requested(tmp_path):
     store = MemoryStore(tmp_path / "memory.sqlite3")
     store.initialize()

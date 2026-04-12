@@ -45,6 +45,13 @@ uv run --python 3.11 codex-memory recall --repo model --query "What should I rea
 uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.toml"
 ```
 
+Limit imported session snippets during recall:
+
+```bash
+uv run --python 3.11 codex-memory recall --repo backend --query "release checks" --max-session-events 2
+uv run --python 3.11 codex-memory recall --repo backend --query "release checks" --max-session-events 0
+```
+
 Start migration conservatively:
 
 ```bash

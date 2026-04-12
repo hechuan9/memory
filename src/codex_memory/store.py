@@ -174,6 +174,7 @@ class MemoryStore:
         limit: int = 12,
         include_candidates: bool = False,
         max_chars: int = 4000,
+        max_session_events: int = 3,
     ) -> list[MemoryItem]:
         statuses = ACTIVE_WITH_CANDIDATES if include_candidates else ACTIVE_STATUSES
         banks = ["global"]
@@ -202,7 +203,11 @@ class MemoryStore:
                 """,
                 [*params[:-1], f"repo:{repo}" if repo else "global", params[-1]],
             ).fetchall()
-        return _dedupe_and_trim([_row_to_item(row) for row in rows], limit=limit, max_chars=max_chars)
+        return _dedupe_and_trim(
+            [item for item in _row_to_item_sequence(rows, max_session_events=max_session_events)],
+            limit=limit,
+            max_chars=max_chars,
+        )
 
     def retain_session(
         self,
@@ -389,6 +394,19 @@ def _row_to_item(row: sqlite3.Row) -> MemoryItem:
         tags_json=str(row["tags_json"] or "[]"),
         score=float(row["rank"] if "rank" in row.keys() else 0.0),
     )
+
+
+def _row_to_item_sequence(rows: Sequence[sqlite3.Row], *, max_session_events: int) -> list[MemoryItem]:
+    items: list[MemoryItem] = []
+    session_events = 0
+    for row in rows:
+        item = _row_to_item(row)
+        if item.kind == "session_event":
+            if max_session_events <= session_events:
+                continue
+            session_events += 1
+        items.append(item)
+    return items
 
 
 def _dedupe_and_trim(items: list[MemoryItem], *, limit: int, max_chars: int) -> list[MemoryItem]:
