@@ -103,6 +103,36 @@ def build_parser() -> argparse.ArgumentParser:
     imported_events_prune.add_argument("--json", action="store_true")
     imported_events_prune.set_defaults(func=cmd_imported_events_prune)
 
+    items = subparsers.add_parser("items", help="Inspect or manage memory items")
+    items_sub = items.add_subparsers(required=True)
+    items_list = items_sub.add_parser("list", help="List memory items")
+    items_list.add_argument("--config", help="Path to local config.toml")
+    items_list.add_argument("--repo", help="Repository filter")
+    items_list.add_argument("--bank-id", help="Bank filter, e.g. global or repo:model")
+    items_list.add_argument("--kind", help="Kind filter")
+    items_list.add_argument("--status", help="Status filter")
+    items_list.add_argument("--limit", type=int, default=50)
+    items_list.add_argument("--json", action="store_true")
+    items_list.set_defaults(func=cmd_items_list)
+    items_get = items_sub.add_parser("get", help="Get a memory item")
+    items_get.add_argument("item_id")
+    items_get.add_argument("--config", help="Path to local config.toml")
+    items_get.add_argument("--json", action="store_true")
+    items_get.set_defaults(func=cmd_items_get)
+    items_update = items_sub.add_parser("update", help="Update memory item fields")
+    items_update.add_argument("item_id")
+    items_update.add_argument("--config", help="Path to local config.toml")
+    items_update.add_argument("--content")
+    items_update.add_argument("--evidence")
+    items_update.add_argument("--status")
+    items_update.add_argument("--json", action="store_true")
+    items_update.set_defaults(func=cmd_items_update)
+    items_delete = items_sub.add_parser("delete", help="Delete a memory item")
+    items_delete.add_argument("item_id")
+    items_delete.add_argument("--config", help="Path to local config.toml")
+    items_delete.add_argument("--json", action="store_true")
+    items_delete.set_defaults(func=cmd_items_delete)
+
     candidates = subparsers.add_parser("candidates", help="List candidate memories")
     candidates_sub = candidates.add_subparsers(required=True)
     candidates_list = candidates_sub.add_parser("list", help="List candidate memories")
@@ -110,6 +140,41 @@ def build_parser() -> argparse.ArgumentParser:
     candidates_list.add_argument("--repo", help="Repository filter")
     candidates_list.add_argument("--json", action="store_true")
     candidates_list.set_defaults(func=cmd_candidates_list)
+    candidates_promote = candidates_sub.add_parser("promote", help="Promote a candidate to active memory")
+    candidates_promote.add_argument("item_id")
+    candidates_promote.add_argument("--config", help="Path to local config.toml")
+    candidates_promote.add_argument("--json", action="store_true")
+    candidates_promote.set_defaults(func=cmd_candidates_promote)
+    candidates_reject = candidates_sub.add_parser("reject", help="Reject a candidate")
+    candidates_reject.add_argument("item_id")
+    candidates_reject.add_argument("--config", help="Path to local config.toml")
+    candidates_reject.add_argument("--json", action="store_true")
+    candidates_reject.set_defaults(func=cmd_candidates_reject)
+
+    conflicts = subparsers.add_parser("conflicts", help="Track memory conflicts")
+    conflicts_sub = conflicts.add_subparsers(required=True)
+    conflicts_mark = conflicts_sub.add_parser("mark", help="Create an active conflict item")
+    conflicts_mark.add_argument("--config", help="Path to local config.toml")
+    conflicts_mark.add_argument("--repo", help="Repository scope")
+    conflicts_mark.add_argument("--content", required=True)
+    conflicts_mark.add_argument("--evidence", default="")
+    conflicts_mark.add_argument("--json", action="store_true")
+    conflicts_mark.set_defaults(func=cmd_conflicts_mark)
+    conflicts_resolve = conflicts_sub.add_parser("resolve", help="Resolve a conflict item")
+    conflicts_resolve.add_argument("item_id")
+    conflicts_resolve.add_argument("--config", help="Path to local config.toml")
+    conflicts_resolve.add_argument("--json", action="store_true")
+    conflicts_resolve.set_defaults(func=cmd_conflicts_resolve)
+
+    export = subparsers.add_parser("export", help="Export memory data")
+    export_sub = export.add_subparsers(required=True)
+    export_markdown = export_sub.add_parser("markdown", help="Export a bank as Markdown")
+    export_markdown.add_argument("--config", help="Path to local config.toml")
+    export_markdown.add_argument("--bank-id", required=True)
+    export_markdown.add_argument("--status", default="active")
+    export_markdown.add_argument("--limit", type=int, default=500)
+    export_markdown.add_argument("--json", action="store_true")
+    export_markdown.set_defaults(func=cmd_export_markdown)
 
     skill_candidates = subparsers.add_parser("skill-candidates", help="Create or inspect skill candidates")
     skill_sub = skill_candidates.add_subparsers(required=True)
@@ -129,6 +194,16 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--config", help="Path to local config.toml")
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=cmd_status)
+
+    dream_report = subparsers.add_parser("dream-report", help="Emit CLI-first memory dream audit report")
+    dream_report.add_argument("--config", help="Path to local config.toml")
+    dream_report.add_argument("--repo", help="Repository scope")
+    dream_report.add_argument("--query", required=True)
+    dream_report.add_argument("--limit", type=int, default=12)
+    dream_report.add_argument("--max-session-events", type=int, default=3)
+    dream_report.add_argument("--max-chars", type=int, default=4000)
+    dream_report.add_argument("--json", action="store_true")
+    dream_report.set_defaults(func=cmd_dream_report)
     return parser
 
 
@@ -292,6 +367,186 @@ def cmd_candidates_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_items_list(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    items = store.list_items(
+        repo=args.repo,
+        bank_id=args.bank_id,
+        kind=args.kind,
+        status=args.status,
+        limit=args.limit,
+    )
+    _emit({"items": [_item_payload(item) for item in items]}, json_output=args.json)
+    return 0
+
+
+def cmd_items_get(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    item = _require_item(store, args.item_id)
+    _emit({"item": _item_payload(item)}, json_output=args.json)
+    return 0
+
+
+def cmd_items_update(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    item = store.update_item(
+        args.item_id,
+        content=args.content,
+        evidence=args.evidence,
+        status=args.status,
+    )
+    if item is None:
+        raise ValueError(f"memory item not found: {args.item_id}")
+    _emit({"item": _item_payload(item)}, json_output=args.json)
+    return 0
+
+
+def cmd_items_delete(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    deleted = store.delete_items([args.item_id])
+    _emit({"deleted": deleted, "id": args.item_id}, json_output=args.json)
+    return 0
+
+
+def cmd_candidates_promote(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    item = _require_item(store, args.item_id)
+    if item.status != "candidate":
+        raise ValueError(f"memory item is not a candidate: {args.item_id}")
+    promoted = store.set_item_status(args.item_id, "active")
+    if promoted is None:
+        raise ValueError(f"memory item not found: {args.item_id}")
+    _emit({"item": _item_payload(promoted)}, json_output=args.json)
+    return 0
+
+
+def cmd_candidates_reject(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    item = _require_item(store, args.item_id)
+    if item.status != "candidate":
+        raise ValueError(f"memory item is not a candidate: {args.item_id}")
+    rejected = store.set_item_status(args.item_id, "rejected")
+    if rejected is None:
+        raise ValueError(f"memory item not found: {args.item_id}")
+    _emit({"item": _item_payload(rejected)}, json_output=args.json)
+    return 0
+
+
+def cmd_conflicts_mark(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    bank_id = f"repo:{args.repo}" if args.repo else "global"
+    item_id = store.upsert_item(
+        bank_id=bank_id,
+        repo=args.repo,
+        kind="conflict",
+        status="active",
+        content=args.content,
+        evidence=args.evidence,
+        tags=[*([] if not args.repo else [f"repo:{args.repo}"]), "kind:conflict"],
+    )
+    item = _require_item(store, item_id)
+    _emit({"item": _item_payload(item)}, json_output=args.json)
+    return 0
+
+
+def cmd_conflicts_resolve(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    item = _require_item(store, args.item_id)
+    if item.kind != "conflict":
+        raise ValueError(f"memory item is not a conflict: {args.item_id}")
+    resolved = store.set_item_status(args.item_id, "resolved")
+    if resolved is None:
+        raise ValueError(f"memory item not found: {args.item_id}")
+    _emit({"item": _item_payload(resolved)}, json_output=args.json)
+    return 0
+
+
+def cmd_export_markdown(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    items = store.list_items(bank_id=args.bank_id, status=args.status, limit=args.limit)
+    lines = [f"# codex-memory export: {args.bank_id}", ""]
+    for item in items:
+        lines.append(f"- {item.content}")
+    markdown = "\n".join(lines).rstrip() + "\n"
+    _emit(
+        {
+            "bank_id": args.bank_id,
+            "status": args.status,
+            "items": len(items),
+            "markdown": markdown,
+        },
+        json_output=args.json,
+    )
+    return 0
+
+
+def cmd_dream_report(args: argparse.Namespace) -> int:
+    config = _config(args)
+    store = _store(config)
+    seed_stats = seed_markdown_sources(
+        store,
+        global_memory_path=config.global_memory_path,
+        workspace_root=config.workspace_root,
+        repo_names=config.repo_names,
+    )
+    results = store.recall(
+        args.query,
+        repo=args.repo,
+        limit=args.limit,
+        max_chars=args.max_chars,
+        max_session_events=args.max_session_events,
+    )
+    context_mode = "recall"
+    if not results:
+        fallback_results = collect_markdown_context(
+            query=args.query,
+            repo=args.repo,
+            global_memory_path=config.global_memory_path,
+            workspace_root=config.workspace_root,
+            repo_names=config.repo_names,
+            limit=args.limit,
+            max_chars=args.max_chars,
+        )
+        context_mode = "fallback-markdown" if fallback_results else "empty"
+        context_results: list[dict[str, Any]] = [_markdown_item_payload(item) for item in fallback_results]
+    else:
+        context_results = [_item_payload(item) for item in results]
+    prune_stats = prune_imported_events(store, apply=False, limit=500)
+    payload = {
+        "status": _status_payload(config, store),
+        "seed": {
+            "indexed_files": seed_stats.indexed_files,
+            "indexed_items": seed_stats.indexed_items,
+            "pruned_items": seed_stats.pruned_items,
+        },
+        "context": {
+            "mode": context_mode,
+            "repo": args.repo,
+            "query": args.query,
+            "results": context_results,
+        },
+        "candidates": [_item_payload(item) for item in store.list_candidates(repo=args.repo)],
+        "imported_events": {
+            "mode": "dry-run",
+            "matched": prune_stats.matched,
+            "pruned": prune_stats.pruned,
+            "sanitized": prune_stats.sanitized,
+            "item_ids": prune_stats.item_ids,
+        },
+    }
+    _emit(payload, json_output=args.json)
+    return 0
+
+
 def cmd_skill_candidate_create(args: argparse.Namespace) -> int:
     config = _config(args)
     output_dir = config.data_dir / "skill-candidates"
@@ -313,13 +568,7 @@ def cmd_skill_candidate_create(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     config = _config(args)
     store = _store(config)
-    payload = {
-        "data_dir": str(config.data_dir),
-        "database_path": str(config.database_path),
-        "items": store.count_items(),
-        "sessions": store.count_sessions(),
-    }
-    _emit(payload, json_output=args.json)
+    _emit(_status_payload(config, store), json_output=args.json)
     return 0
 
 
@@ -331,6 +580,22 @@ def _store(config: MemoryConfig) -> MemoryStore:
     store = MemoryStore(config.database_path)
     store.initialize()
     return store
+
+
+def _status_payload(config: MemoryConfig, store: MemoryStore) -> dict[str, Any]:
+    return {
+        "data_dir": str(config.data_dir),
+        "database_path": str(config.database_path),
+        "items": store.count_items(),
+        "sessions": store.count_sessions(),
+    }
+
+
+def _require_item(store: MemoryStore, item_id: str) -> MemoryItem:
+    item = store.get_item(item_id)
+    if item is None:
+        raise ValueError(f"memory item not found: {item_id}")
+    return item
 
 
 def _item_payload(item: MemoryItem) -> dict[str, Any]:

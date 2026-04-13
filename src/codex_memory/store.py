@@ -293,6 +293,89 @@ class MemoryStore:
             ).fetchall()
         return [_row_to_item(row) for row in rows]
 
+    def list_items(
+        self,
+        *,
+        repo: str | None = None,
+        bank_id: str | None = None,
+        kind: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[MemoryItem]:
+        clauses: list[str] = []
+        params: list[object] = []
+        if repo:
+            clauses.append("repo = ?")
+            params.append(repo)
+        if bank_id:
+            clauses.append("bank_id = ?")
+            params.append(bank_id)
+        if kind:
+            clauses.append("kind = ?")
+            params.append(kind)
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT *, 0.0 AS rank FROM memory_items
+                {where}
+                ORDER BY updated_at DESC
+                LIMIT ?
+                """,
+                params,
+            ).fetchall()
+        return [_row_to_item(row) for row in rows]
+
+    def get_item(self, item_id: str) -> MemoryItem | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT *, 0.0 AS rank FROM memory_items WHERE id = ?",
+                (item_id,),
+            ).fetchone()
+        return _row_to_item(row) if row else None
+
+    def update_item(
+        self,
+        item_id: str,
+        *,
+        content: str | None = None,
+        evidence: str | None = None,
+        status: str | None = None,
+    ) -> MemoryItem | None:
+        existing = self.get_item(item_id)
+        if existing is None:
+            return None
+        new_content = existing.content if content is None else content.strip()
+        new_evidence = existing.evidence if evidence is None else evidence.strip()
+        new_status = existing.status if status is None else status.strip()
+        new_hash = _hash_parts(
+            existing.bank_id,
+            existing.kind,
+            new_content,
+            existing.source_path or "",
+            existing.source_anchor or "",
+        )
+        with self._connect() as connection:
+            updated = connection.execute(
+                """
+                UPDATE memory_items
+                SET content = ?, evidence = ?, status = ?, content_hash = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_content, new_evidence, new_status, new_hash, _now(), item_id),
+            ).rowcount
+            if not updated:
+                return None
+            self._sync_fts(connection, item_id)
+        return self.get_item(item_id)
+
+    def set_item_status(self, item_id: str, status: str) -> MemoryItem | None:
+        return self.update_item(item_id, status=status)
+
     def count_items(self) -> int:
         with self._connect() as connection:
             return int(connection.execute("SELECT COUNT(*) FROM memory_items").fetchone()[0])

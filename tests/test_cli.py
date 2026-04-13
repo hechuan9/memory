@@ -24,7 +24,11 @@ def test_all_help_commands_run():
         ("retain-session", "--help"),
         ("import-conversations", "--help"),
         ("imported-events", "--help"),
+        ("items", "--help"),
         ("candidates", "--help"),
+        ("conflicts", "--help"),
+        ("export", "--help"),
+        ("dream-report", "--help"),
         ("skill-candidates", "--help"),
         ("status", "--help"),
     ]:
@@ -518,6 +522,186 @@ def test_imported_events_prune_cli_dry_run(tmp_path):
     assert payload["mode"] == "dry-run"
     assert payload["matched"] == 1
     assert payload["pruned"] == 0
+
+
+def test_items_cli_lists_gets_updates_and_deletes_items(tmp_path):
+    config = tmp_path / "config.toml"
+    workspace = tmp_path / "workspace"
+    repo_docs = workspace / "model" / "docs"
+    repo_docs.mkdir(parents=True)
+    memory_path = repo_docs / "MEMORY.md"
+    memory_path.write_text("- Model runs use AWS broker.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["model"]
+""".strip(),
+        encoding="utf-8",
+    )
+    assert run_cli("seed", "--config", str(config), "--json").returncode == 0
+
+    listed = run_cli("items", "list", "--config", str(config), "--repo", "model", "--json")
+    assert listed.returncode == 0, listed.stderr
+    item = json.loads(listed.stdout)["items"][0]
+    assert item["content"] == "Model runs use AWS broker."
+
+    fetched = run_cli("items", "get", item["id"], "--config", str(config), "--json")
+    assert fetched.returncode == 0, fetched.stderr
+    assert json.loads(fetched.stdout)["item"]["source_path"] == str(memory_path)
+
+    updated = run_cli(
+        "items",
+        "update",
+        item["id"],
+        "--config",
+        str(config),
+        "--content",
+        "Model runs use only AWS broker.",
+        "--evidence",
+        "CLI-first dream consolidation",
+        "--json",
+    )
+    assert updated.returncode == 0, updated.stderr
+    updated_item = json.loads(updated.stdout)["item"]
+    assert updated_item["content"] == "Model runs use only AWS broker."
+    assert updated_item["evidence"] == "CLI-first dream consolidation"
+
+    deleted = run_cli("items", "delete", item["id"], "--config", str(config), "--json")
+    assert deleted.returncode == 0, deleted.stderr
+    assert json.loads(deleted.stdout) == {"deleted": 1, "id": item["id"]}
+
+
+def test_candidates_cli_promotes_and_rejects_candidates(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{(tmp_path / "memory.sqlite3").as_posix()}"\n',
+        encoding="utf-8",
+    )
+    payload = {
+        "repo": "model",
+        "summary": "Candidate discussion",
+        "events": [{"role": "user", "content": "Discuss model memory"}],
+        "candidates": [
+            {
+                "kind": "lesson",
+                "content": "Model memory candidates should be reviewed through CLI.",
+                "evidence": "User asked for CLI-first dream",
+                "tags": ["repo:model"],
+            }
+        ],
+    }
+    assert run_cli("retain-session", "--config", str(config), "--stdin-json", input_text=json.dumps(payload)).returncode == 0
+    candidates = run_cli("candidates", "list", "--config", str(config), "--repo", "model", "--json")
+    candidate = json.loads(candidates.stdout)["candidates"][0]
+
+    promoted = run_cli("candidates", "promote", candidate["id"], "--config", str(config), "--json")
+    assert promoted.returncode == 0, promoted.stderr
+    assert json.loads(promoted.stdout)["item"]["status"] == "active"
+
+    payload["candidates"][0]["content"] = "Rejected candidate stays out of active recall."
+    assert run_cli("retain-session", "--config", str(config), "--stdin-json", input_text=json.dumps(payload)).returncode == 0
+    rejected_candidate = json.loads(
+        run_cli("candidates", "list", "--config", str(config), "--repo", "model", "--json").stdout
+    )["candidates"][0]
+    rejected = run_cli("candidates", "reject", rejected_candidate["id"], "--config", str(config), "--json")
+    assert rejected.returncode == 0, rejected.stderr
+    assert json.loads(rejected.stdout)["item"]["status"] == "rejected"
+
+
+def test_conflicts_cli_marks_and_resolves_conflict_items(tmp_path):
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{(tmp_path / "memory.sqlite3").as_posix()}"\n',
+        encoding="utf-8",
+    )
+
+    marked = run_cli(
+        "conflicts",
+        "mark",
+        "--config",
+        str(config),
+        "--repo",
+        "model",
+        "--content",
+        "model docs still mention Linux overflow default",
+        "--evidence",
+        "Conflicts with AWS-only trainer default",
+        "--json",
+    )
+
+    assert marked.returncode == 0, marked.stderr
+    item = json.loads(marked.stdout)["item"]
+    assert item["kind"] == "conflict"
+    assert item["status"] == "active"
+    assert item["bank_id"] == "repo:model"
+
+    resolved = run_cli("conflicts", "resolve", item["id"], "--config", str(config), "--json")
+    assert resolved.returncode == 0, resolved.stderr
+    assert json.loads(resolved.stdout)["item"]["status"] == "resolved"
+
+
+def test_export_markdown_cli_outputs_active_bank_items(tmp_path):
+    config = tmp_path / "config.toml"
+    workspace = tmp_path / "workspace"
+    repo_docs = workspace / "model" / "docs"
+    repo_docs.mkdir(parents=True)
+    (repo_docs / "MEMORY.md").write_text("- Model runs use AWS broker.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["model"]
+""".strip(),
+        encoding="utf-8",
+    )
+    assert run_cli("seed", "--config", str(config), "--json").returncode == 0
+
+    exported = run_cli("export", "markdown", "--config", str(config), "--bank-id", "repo:model", "--json")
+
+    assert exported.returncode == 0, exported.stderr
+    payload = json.loads(exported.stdout)
+    assert payload["bank_id"] == "repo:model"
+    assert "- Model runs use AWS broker." in payload["markdown"]
+
+
+def test_dream_report_cli_uses_cli_surfaces_without_mutation(tmp_path):
+    config = tmp_path / "config.toml"
+    workspace = tmp_path / "workspace"
+    repo_docs = workspace / "memory" / "docs"
+    repo_docs.mkdir(parents=True)
+    (repo_docs / "MEMORY.md").write_text("- Dream reports should use codex-memory CLI first.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+repo_names = ["memory"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    report = run_cli(
+        "dream-report",
+        "--config",
+        str(config),
+        "--repo",
+        "memory",
+        "--query",
+        "dream codex-memory CLI",
+        "--json",
+    )
+
+    assert report.returncode == 0, report.stderr
+    payload = json.loads(report.stdout)
+    assert payload["status"]["items"] >= 1
+    assert payload["seed"]["indexed_items"] == 1
+    assert payload["context"]["mode"] == "recall"
+    assert "Dream reports should use codex-memory CLI first" in json.dumps(payload["context"], ensure_ascii=False)
+    assert payload["candidates"] == []
+    assert payload["imported_events"]["mode"] == "dry-run"
 
 
 def _write_session(path, *, cwd, messages):

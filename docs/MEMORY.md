@@ -31,3 +31,11 @@
 - 根因：只检查 `exists()` 不足以区分缺失值、目录与真实文件。
 - 预防动作：解析 transcript 前使用 `Path.is_file()` 作为快速失败条件；缺失、空值、目录都按无 transcript 处理并返回合法 hook JSON。
 - 合并前验证：测试覆盖 `transcript_path: None`，并运行真实配置 smoke。
+
+### 4. memory dream 的主入口必须是 CLI 报告，不再人工遍历 Markdown 当主流程
+
+- 适用范围：`codex-memory dream-report`、daily memory dream automation、`memory-dream` skill，以及任何周期性整理记忆的流程。
+- 问题模式：如果 dream 继续先人工遍历全局 `memory.md`、工作区 `AGENTS.md` 和各仓 `docs/MEMORY.md`，SQLite 里的候选、retained session events、imported-event 噪声和索引健康就会变成旁路，最终无法退役 Markdown 真源。
+- 根因：旧 dream 流程把 Markdown 当长期真源，把 `codex-memory` 只当辅助召回层；这和 CLI-first 迁移目标冲突。
+- 预防动作：周期整理必须先运行 `codex-memory dream-report --json`，并以其中的 `status`、`seed`、`context`、`candidates` 与 `imported_events` 作为日报指标和决策入口。Markdown 只作为 legacy import/export 与必要人工审计材料，不再作为主审查面。
+- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.11 codex-memory dream-report --config /Users/hechuan/.codex/memory/config.toml --repo memory --query "memory dream cli" --json`。
