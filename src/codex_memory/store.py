@@ -244,20 +244,6 @@ class MemoryStore:
                     """,
                     (session_id, str(event.get("role", "unknown")), content, now),
                 )
-        for event in events:
-            content = str(event.get("content", "")).strip()
-            if not content:
-                continue
-            self.upsert_item(
-                bank_id=f"repo:{repo}" if repo else "global",
-                repo=repo,
-                kind="session_event",
-                status="active",
-                content=content,
-                evidence=summary,
-                source_anchor=session_id,
-                tags=[*session_tags, f"role:{event.get('role', 'unknown')}"],
-            )
         for candidate in candidates:
             content = str(candidate.get("content", "")).strip()
             validate_retain_content(content)

@@ -181,6 +181,11 @@ def test_retain_session_writes_events_and_candidates(tmp_path):
     assert session_id
     assert store.count_sessions() == 1
     assert store.count_events(session_id) == 2
+    with sqlite3.connect(tmp_path / "memory.sqlite3") as connection:
+        indexed_session_events = connection.execute(
+            "SELECT COUNT(*) FROM memory_items WHERE kind = 'session_event'"
+        ).fetchone()[0]
+    assert indexed_session_events == 0
     candidates = store.list_candidates(repo="backend")
     assert len(candidates) == 1
     assert json.loads(candidates[0].tags_json) == ["repo:backend"]

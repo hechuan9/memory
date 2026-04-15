@@ -1,6 +1,9 @@
 import json
+import sqlite3
 import subprocess
 import sys
+
+from codex_memory.store import MemoryStore
 
 
 def run_cli(*args, input_text=None, cwd=None):
@@ -369,6 +372,17 @@ def test_hook_stop_retains_transcript_session(tmp_path):
     payload = json.loads(result.stdout)
     assert payload == {"continue": True, "suppressOutput": True}
 
+    with sqlite3.connect(tmp_path / "memory.sqlite3") as connection:
+        sessions = connection.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        events = connection.execute("SELECT COUNT(*) FROM session_events").fetchone()[0]
+        indexed_events = connection.execute(
+            "SELECT COUNT(*) FROM memory_items WHERE kind = 'session_event'"
+        ).fetchone()[0]
+
+    assert sessions == 1
+    assert events == 2
+    assert indexed_events == 0
+
     recall = run_cli(
         "recall",
         "--config",
@@ -380,7 +394,7 @@ def test_hook_stop_retains_transcript_session(tmp_path):
         "--json",
     )
     assert recall.returncode == 0, recall.stderr
-    assert "backend deploys read docs/ENVIRONMENT.md first" in recall.stdout
+    assert json.loads(recall.stdout) == {"results": []}
 
 
 def test_hook_stop_returns_valid_json_when_transcript_is_null(tmp_path):
@@ -499,21 +513,16 @@ def test_imported_events_prune_cli_dry_run(tmp_path):
         f'data_dir = "{tmp_path.as_posix()}"\ndatabase_path = "{(tmp_path / "memory.sqlite3").as_posix()}"\n',
         encoding="utf-8",
     )
-    retained = run_cli(
-        "retain-session",
-        "--config",
-        str(config),
-        "--stdin-json",
-        input_text=json.dumps(
-            {
-                "repo": "automation",
-                "summary": "Imported noisy event",
-                "events": [{"role": "user", "content": "Automation: daily memory dream\nAutomation ID: automation-3"}],
-                "tags": ["imported", "codex-conversation"],
-            }
-        ),
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+    store.upsert_item(
+        bank_id="global",
+        kind="session_event",
+        status="active",
+        content="Automation: daily memory dream\nAutomation ID: automation-3",
+        evidence="Legacy imported session summary",
+        tags=["imported", "codex-conversation", "role:user"],
     )
-    assert retained.returncode == 0, retained.stderr
 
     result = run_cli("imported-events", "prune", "--config", str(config), "--json")
 

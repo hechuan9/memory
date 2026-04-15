@@ -39,3 +39,11 @@
 - 根因：旧 dream 流程把 Markdown 当长期真源，把 `codex-memory` 只当辅助召回层；这和 CLI-first 迁移目标冲突。
 - 预防动作：周期整理必须先运行 `codex-memory dream-report --json`，并以其中的 `status`、`seed`、`context`、`candidates` 与 `imported_events` 作为日报指标和决策入口。Markdown 只作为 legacy import/export 与必要人工审计材料，不再作为主审查面。
 - 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.11 codex-memory dream-report --config /Users/hechuan/.codex/memory/config.toml --repo memory --query "memory dream cli" --json`。
+
+### 5. 会话事件只能归档，不得进入长期召回索引
+
+- 适用范围：`MemoryStore.retain_session`、Codex hook stop retain、`import-conversations` 和 `imported-events prune`。
+- 问题模式：把每条 user/assistant transcript 片段写成 `memory_items.kind = session_event`，会让过程性中间状态、工具进度和用户临时提示淹没 durable `preference`、`constraint`、`lesson`。
+- 根因：把会话归档表 `sessions/session_events` 和长期召回索引 `memory_items` 混成同一个写面，导致 recall 既要服务长期记忆，又要背负原始对话检索。
+- 预防动作：`retain_session` 只把 transcript 写入 `sessions/session_events` 作为审计归档；只有人工或自动抽取出的 `candidate` 可以进入 `memory_items`，等待 promote/reject。`imported-events prune` 只保留 legacy `session_event` 清理能力，不应成为新写入路径。
+- 合并前验证：测试必须断言 hook/import 后 `session_events` 有归档记录，但 `memory_items` 中 `kind = session_event` 为 `0`；同时保留 legacy prune 测试覆盖旧 `session_event` item。

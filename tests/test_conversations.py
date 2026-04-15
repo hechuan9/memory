@@ -52,7 +52,7 @@ def test_import_conversations_write_imports_session_events_and_is_idempotent(tmp
     assert store.count_events(first.imported_session_ids[0]) == 2
 
 
-def test_imported_conversation_events_are_recallable(tmp_path):
+def test_imported_conversation_events_are_archived_not_recallable(tmp_path):
     archive = tmp_path / "archived_sessions"
     archive.mkdir()
     _write_session(
@@ -65,12 +65,15 @@ def test_imported_conversation_events_are_recallable(tmp_path):
     )
     store = _store(tmp_path)
 
-    import_codex_conversations(store, input_dir=archive, write=True)
+    stats = import_codex_conversations(store, input_dir=archive, write=True)
     results = store.recall("backend pre_merge_gate", repo="backend")
 
-    assert results
-    assert results[0].kind == "session_event"
-    assert "pre_merge_gate" in results[0].content
+    assert stats.sessions_written == 1
+    assert stats.events_written == 2
+    assert store.count_sessions() == 1
+    assert store.count_events(stats.imported_session_ids[0]) == 2
+    assert results == []
+    assert store.count_items() == 0
 
 
 def test_import_conversations_skips_context_noise(tmp_path):
@@ -93,8 +96,9 @@ def test_import_conversations_skips_context_noise(tmp_path):
     assert stats.safe_events == 1
     assert stats.noisy_events == 2
     assert stats.events_written == 1
-    assert len(results) == 1
-    assert results[0].kind == "session_event"
+    assert results == []
+    assert store.count_events(stats.imported_session_ids[0]) == 1
+    assert store.count_items() == 0
 
 
 def test_prune_imported_events_dry_run_then_apply(tmp_path):
