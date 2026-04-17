@@ -57,3 +57,11 @@
   - `seed`、`context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）负责刷新官方 `official_memories_dir`，写入 SQLite 索引。
   - `recall` 只读取 SQLite，不执行 Markdown fallback；Markdown 仅保留导入导出与人工审计用途。
 - 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k fallback` 与 `context --json` 相关场景通过，确认无 Markdown fallback 的可观察表现。
+
+### 7. public repo 测试夹具也不得包含真实本机路径
+
+- 适用范围：测试、示例配置、文档计划与任何会进入 git 的 fixture 内容。
+- 问题模式：即使只是 official memory fixture 的 `cwd:` 元数据，提交 `/Users/<real-user>/...` 这类真实本机路径也会违反 public repo 安全边界。
+- 根因：为了覆盖 repo inference，测试直接复用了本机工作区路径，而不是使用通用占位路径。
+- 预防动作：fixture 路径统一使用 `/workspace/...`、`/tmp/...` 或 `/Users/you/...` 这类非真实占位；repo inference 测试只依赖路径分段包含 repo 名，不依赖真实 home。
+- 合并前验证：扫描真实用户名 home、旧外置盘路径与系统临时目录模式必须无命中；`/Users/you` 仅允许作为示例占位。
