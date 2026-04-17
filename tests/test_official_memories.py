@@ -19,7 +19,7 @@ def test_seed_official_memories_indexes_raw_and_rollout_sources(tmp_path):
         encoding="utf-8",
     )
     rollout_summary.write_text(
-        """# Rollout summary\n\ncwd: /Users/hechuan/workspace/climamind/backend\n\n- Backend rollout completed on integration branch.\n""",
+        """# Rollout summary\n\ncwd: /workspace/climamind/backend\n\n- Backend rollout completed on integration branch.\n""",
         encoding="utf-8",
     )
 
@@ -101,7 +101,7 @@ def test_seed_official_memories_prunes_rows_for_removed_sources(tmp_path):
     rollout_dir.mkdir(parents=True)
     rollout_file = rollout_dir / "backend.md"
     rollout_file.write_text(
-        """# Rollout backend\n\ncwd: /Users/hechuan/workspace/climamind/backend\n\n- Rollout completed.\n""",
+        """# Rollout backend\n\ncwd: /workspace/climamind/backend\n\n- Rollout completed.\n""",
         encoding="utf-8",
     )
 

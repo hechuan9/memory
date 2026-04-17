@@ -37,7 +37,7 @@ def create_official_memory_dir(
         prepared_content = "\n".join(raw_lines).strip()
         payload = (
             f"# {repo} official memories\n"
-            f"cwd: /Users/hechuan/workspace/climamind/{repo}\n\n"
+            f"cwd: /workspace/climamind/{repo}\n\n"
             f"{prepared_content}\n"
         )
     else:
@@ -110,7 +110,7 @@ repo_names = ["model"]
         "--repo",
         "model",
         "--query",
-        "model uv environment",
+        "model uv environment guidelines",
         "--json",
     )
     assert recall.returncode == 0, recall.stderr
