@@ -12,8 +12,8 @@
 
 ## 设计边界
 - 不使用 MCP、Hindsight runtime、外部云记忆服务或 Codex 之外的本地模型服务。
-- `codex-memory` CLI 与本地 SQLite store 是官方记忆运行时的主操作面；`seed`、`context`、`dream-report`、hooks 会先刷新官方记忆源后走 SQLite 检索。
-- `recall` 只读取 SQLite，不从 Markdown fallback 回退；`context`/`dream-report`/hooks 负责官方记忆刷新。
+- `codex-memory` CLI 与本地 SQLite store 是官方记忆运行时的主操作面；`seed`、`context`、`dream-report`、recall-injection hooks（session-start/user-prompt-submit）会先刷新官方记忆源后走 SQLite 检索。
+- `recall` 只读取 SQLite，不从 Markdown fallback 回退；`context`/`dream-report`/recall-injection hooks 负责官方记忆刷新。`Stop` hook 只负责归档 transcript（无回退/刷新职责）。
 - `fallback` 路径不再回退到 Markdown；Markdown 仅用于官方迁移期的导入/导出和人工审计。
 - skill 候选只能写入候选目录，不得自动安装。
 

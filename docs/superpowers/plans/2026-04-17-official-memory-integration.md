@@ -12,7 +12,7 @@
 - [x] 更新 `AGENTS.md`：调整设计边界为官方记忆上游 + SQLite CLI 主控、Markdown 非运行时回退。
 - [x] 更新 `docs/TODO.md`：完成 Markdown 退役/启动 wrapper 相关项，其余未完成项保留。
 - [x] 更新 `docs/JOBS_DONE.md`：新增 2026-04-17 文档更新任务记录。
-- [x] 更新 `docs/MEMORY.md`：新增稳定教训，强调 recall 必须先 seed 官方记忆、Markdown 仅 legacy。
+- [x] 更新 `docs/MEMORY.md`：新增稳定教训，强调 runtime recall 运行于由 `seed`、`context`、`dream-report` 或 recall-injection hooks 刷新后的官方记忆索引之上，Markdown 仅 legacy。
 - [x] 新增 `docs/superpowers/plans/2026-04-17-official-memory-integration.md` 作为任务交付文档。
 
 ## 验证
