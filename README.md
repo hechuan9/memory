@@ -2,15 +2,15 @@
 
 Local-first memory and self-learning helpers for Codex workflows.
 
-This repository provides a small Python CLI that indexes existing Markdown memory, stores session summaries locally, recalls relevant context across sessions, audits memory hygiene, and drafts reusable skill candidates. It is designed to be public-safe: local databases, transcripts, logs, and generated candidate drafts stay outside git.
+This repository provides a Python CLI that seeds official Codex Memories into a local SQLite + FTS5 store, recalls scoped memory for runtime context, audits memory candidates, and manages retention workflows. It is designed to be public-safe: local databases, transcripts, logs, and generated candidate drafts stay outside git.
 
 ## Why This Exists
 
-Codex Desktop does not currently expose a controllable local-first long-term memory layer for this workflow. This repository provides that missing layer. The CLI and its SQLite store are the primary operational layer for recall, review, and memory hygiene; configured Markdown files remain a legacy import/export and human audit surface during migration. It is not a replacement for ChatGPT or Codex session history; it is a local recall, retention, candidate, and skill-draft system designed to run without MCP or cloud memory services.
+Codex Desktop does not currently expose a controllable long-term memory layer for this workflow, so this repository provides one through local `codex-memory` runtime storage. Runtime recall and `context` output are driven from official Codex Memories as the upstream source. Configured Markdown files remain available as legacy import/export and human-audit material only; they are not runtime recall or fallback sources.
 
 ## What It Does
 
-- Indexes durable Markdown sources into a local SQLite + FTS5 store.
+- Seeds official Codex Memories into a local SQLite + FTS5 store.
 - Recalls scoped memory from a current repository bank plus a global bank.
 - Retains structured session summaries and candidate long-term memories.
 - Imports local Codex archived conversations in explicit dry-run/write migration steps.
@@ -41,7 +41,7 @@ mkdir -p "${CODEX_HOME:-$HOME/.codex}/memory"
 cp examples/climamind.config.example.toml "${CODEX_HOME:-$HOME/.codex}/memory/config.toml"
 ```
 
-Edit the copied file for your machine. Do not commit it.
+Edit the copied file for your machine. Do not commit it. Public-repo configs must not contain private paths or secrets.
 
 ## CLI
 
@@ -52,7 +52,7 @@ uv run --python 3.11 codex-memory context --repo model --query "What should I re
 uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.toml"
 ```
 
-`context` is the preferred startup entrypoint. It uses SQLite recall first, then falls back to configured Markdown sources when recall is empty. `dream-report` is the preferred memory hygiene entrypoint because it combines index refresh, status, recall context, candidate inventory, and imported-event noise checks into one JSON payload.
+`context` is the preferred startup entrypoint. It seeds official Codex Memories and reads recall from SQLite only. `fallback` is retired and does not consult Markdown runtime sources. `dream-report` is the preferred memory hygiene entrypoint because it combines index refresh, status, recall context, candidate inventory, and imported-event noise checks into one JSON payload.
 
 CLI-first memory hygiene:
 

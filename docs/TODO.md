@@ -8,12 +8,12 @@
 - [x] Add CLI-first dream audit output through `codex-memory dream-report`.
 - [x] Add item CRUD, conflict lifecycle, and Markdown export commands for migration support.
 - [ ] Add skill candidate extraction from repeated session workflows, but keep installation manual through existing skill review paths.
-- [ ] Add a local startup wrapper example that runs `seed` and `recall`, then emits fenced context marked as recalled background, not user instruction.
+- [x] Remove local startup wrapper requirement; `context` entrypoint is authoritative for startup bootstrap.
 - [ ] Add migration metrics that show recall hit mix by `kind` so imported sessions cannot silently dominate durable Markdown sources.
 
 ## Guardrails
 
-- [ ] Keep local home paths, SQLite files, transcripts, logs, secrets, and private path dumps out of this public repository.
-- [ ] Treat the SQLite store and `codex-memory` CLI as the primary operational surface; keep Markdown as legacy import/export and human audit material until all automations are migrated.
+- [x] Keep local home paths, SQLite files, transcripts, logs, secrets, and private path dumps out of this public repository.
+- [x] Treat the SQLite store and `codex-memory` CLI as the primary operational surface; keep Markdown as legacy import/export and human audit material.
 - [ ] Keep historical import batch sizes small; expand only after recall quality checks.
 - [ ] Keep raw transcript events in `sessions/session_events`; do not index new `session_event` items into durable recall.

@@ -12,7 +12,8 @@
 
 ## 设计边界
 - 不使用 MCP、Hindsight runtime、外部云记忆服务或 Codex 之外的本地模型服务。
-- `codex-memory` CLI 与本地 SQLite store 是当前 recall、review、候选和 dream hygiene 的主操作面；Markdown 只作为迁移期导入、导出和人工审计载体。
+- `codex-memory` CLI 与本地 SQLite store 是官方记忆运行时的主操作面；`seed`、`context`、`recall`、`dream-report` 以官方记忆源为上游并走 SQLite 检索。
+- `fallback` 路径不再回退到 Markdown；Markdown 仅用于官方迁移期的导入/导出和人工审计。
 - skill 候选只能写入候选目录，不得自动安装。
 
 ## 验证

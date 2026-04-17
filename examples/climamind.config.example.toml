@@ -1,7 +1,11 @@
 # Copy this file to $CODEX_HOME/memory/config.toml and edit local paths.
 
+# Upstream runtime source for seeding official memories into SQLite.
 data_dir = "/Users/you/.codex/memory"
 database_path = "/Users/you/.codex/memory/memory.sqlite3"
+official_memories_dir = "/Users/you/.codex/memories"
+
+# Legacy materials for import/export and manual audit only; not runtime recall/fallback.
 global_memory_path = "/Users/you/.codex/memory.md"
 workspace_root = "/path/to/workspace"
 
