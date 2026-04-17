@@ -63,3 +63,33 @@ def test_seed_official_memories_missing_memories_dir_is_noop(tmp_path):
     assert stats.indexed_items == 0
     assert stats.pruned_items == 0
     assert store.count_items() == 0
+
+
+def test_seed_official_memories_falls_back_to_whole_file_chunk(tmp_path):
+    memories_dir = tmp_path / "memories"
+    memories_dir.mkdir()
+
+    memory_summary = memories_dir / "memory_summary.md"
+    memory_summary.write_text(
+        "This memory summary has no headings and should still be indexed as one item.\n"
+        "It contains long-form plain text for the fallback path.\n",
+        encoding="utf-8",
+    )
+
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+
+    stats = seed_official_memories(store, memories_dir=memories_dir)
+
+    assert stats.indexed_files == 1
+    assert stats.indexed_items == 1
+    rows = store._connect().execute(
+        "SELECT bank_id, kind, content, tags_json FROM memory_items WHERE source_path = ?",
+        (str(memory_summary),),
+    ).fetchall()
+    assert len(rows) == 1
+    bank_id, kind, content, tags_json = rows[0]
+    assert bank_id == "global"
+    assert kind == "official_memory"
+    assert "This memory summary" in content
+    assert "source:official-codex-memory" in json.loads(tags_json)

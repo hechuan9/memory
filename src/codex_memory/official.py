@@ -145,6 +145,6 @@ def _section_chunks(path: Path) -> list[tuple[int, str]]:
         chunks.append((current_start, current_lines))
 
     if not has_top_level_section:
-        return [(1, [raw_text])]
+        return [(1, raw_text)]
 
     return [(start, "\n".join(block).strip()) for start, block in chunks]
