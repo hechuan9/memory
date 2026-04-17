@@ -56,8 +56,8 @@
 - Modify: `README.md`
 - Modify: `docs/TODO.md`
 - Modify: `docs/MEMORY.md`
-- External after code merge: `/Users/hechuan/.codex/skills/memory-dream/SKILL.md`
-- External after code merge: `/Users/hechuan/.codex/automations/automation-3/memory.md`
+- External after code merge: `${CODEX_HOME}/skills/memory-dream/SKILL.md`
+- External after code merge: `${CODEX_HOME}/automations/automation-3/memory.md`
 
 - [ ] Document CLI-first dream commands in README.
 - [ ] Update TODO to mark first/second phase pieces complete or narrowed.
@@ -69,6 +69,6 @@
 
 - [ ] Run `uv run --python 3.11 python -m pytest -q`.
 - [ ] Run `bash scripts/pre_merge_gate.sh`.
-- [ ] Smoke local CLI: `uv run --python 3.11 codex-memory dream-report --config /Users/hechuan/.codex/memory/config.toml --repo memory --query "memory dream cli" --json`.
+- [ ] Smoke local CLI: `uv run --python 3.11 codex-memory dream-report --config ${CODEX_HOME}/memory/config.toml --repo memory --query "memory dream cli" --json`.
 - [ ] Commit repository changes.
 - [ ] Merge validated branch back to `main` and clean the worktree.

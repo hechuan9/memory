@@ -38,7 +38,7 @@
 - 问题模式：如果 dream 继续先人工遍历全局 `memory.md`、工作区 `AGENTS.md` 和各仓 `docs/MEMORY.md`，SQLite 里的候选、retained session events、imported-event 噪声和索引健康就会变成旁路，最终无法退役 Markdown 真源。
 - 根因：旧 dream 流程把 Markdown 当长期真源，把 `codex-memory` 只当辅助召回层；这和 CLI-first 迁移目标冲突。
 - 预防动作：周期整理必须先运行 `codex-memory dream-report --json`，并以其中的 `status`、`seed`、`context`、`candidates` 与 `imported_events` 作为日报指标和决策入口。Markdown 只作为 legacy import/export 与必要人工审计材料，不再作为主审查面。
-- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.11 codex-memory dream-report --config /Users/hechuan/.codex/memory/config.toml --repo memory --query "memory dream cli" --json`。
+- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.11 codex-memory dream-report --config "${CODEX_HOME}/memory/config.toml" --repo memory --query "memory dream cli" --json`。
 
 ### 5. 会话事件只能归档，不得进入长期召回索引
 
@@ -48,10 +48,12 @@
 - 预防动作：`retain_session` 只把 transcript 写入 `sessions/session_events` 作为审计归档；只有人工或自动抽取出的 `candidate` 可以进入 `memory_items`，等待 promote/reject。`imported-events prune` 只保留 legacy `session_event` 清理能力，不应成为新写入路径。
 - 合并前验证：测试必须断言 hook/import 后 `session_events` 有归档记录，但 `memory_items` 中 `kind = session_event` 为 `0`；同时保留 legacy prune 测试覆盖旧 `session_event` item。
 
-### 6. runtime recall 必须先 seed 官方记忆
+### 6. runtime recall 必须基于已刷新官方记忆运行
 
-- 适用范围：`seed`、`context`、`recall`、Hook 注入链路。
-- 问题模式：若 recall 仍把 Markdown 作为回退或并列运行时源，官方记忆上游将与本地运行时行为脱节，迁移指标失真。
+- 适用范围：`seed`、`context`、`dream-report`、Hook 注入链路。
+- 问题模式：若 `recall` 仍把 Markdown 作为并列运行时源，官方记忆上游将与本地运行时行为脱节，迁移指标失真。
 - 根因：运行时路径已经切为官方 `official_memories_dir`，继续容许 Markdown 回退会造成重复/冲突的真源语义。
-- 预防动作：`official_memories_dir` 作为上游运行时源；`context` 输出 `fallback` 标记为 retired，`recall`/Hook 均不从 Markdown fallback 恢复；Markdown 仅保留导入导出与人工审计用途。
+- 预防动作：
+  - `seed`、`context`、`dream-report`、Hook 负责刷新官方 `official_memories_dir`，写入 SQLite 索引。
+  - `recall` 只读取 SQLite，不执行 Markdown fallback；Markdown 仅保留导入导出与人工审计用途。
 - 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k fallback` 与 `context --json` 相关场景通过，确认无 Markdown fallback 的可观察表现。
