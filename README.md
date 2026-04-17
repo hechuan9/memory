@@ -52,7 +52,7 @@ uv run --python 3.11 codex-memory context --repo model --query "What should I re
 uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.toml"
 ```
 
-`context` is the preferred startup entrypoint. It seeds official Codex Memories and reads recall from SQLite only. `fallback` is retired and does not consult Markdown runtime sources. `dream-report` is the preferred memory hygiene entrypoint because it combines index refresh, status, recall context, candidate inventory, and imported-event noise checks into one JSON payload.
+`context` is the preferred startup entrypoint. It seeds the runtime scope of official Codex Memories and reads recall from SQLite only. Runtime scope keeps high-signal summary/index files in the recall path and leaves raw thread exports, per-rollout summaries, and `MEMORY.md` task-detail chunks out of default hook context. Use `seed --scope full` when you need the complete audit corpus. `fallback` is retired and does not consult Markdown runtime sources. `dream-report` is the preferred memory hygiene entrypoint because it combines runtime index refresh, status, recall context, candidate inventory, and imported-event noise checks into one JSON payload.
 
 CLI-first memory hygiene:
 

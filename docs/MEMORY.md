@@ -54,9 +54,10 @@
 - 问题模式：若 `recall` 仍把 Markdown 作为并列运行时源，官方记忆上游将与本地运行时行为脱节，迁移指标失真。
 - 根因：运行时路径已经切为官方 `official_memories_dir`，继续容许 Markdown 回退会造成重复/冲突的真源语义。
 - 预防动作：
-  - `seed`、`context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）负责刷新官方 `official_memories_dir`，写入 SQLite 索引。
+  - `context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）只刷新 runtime scope：`memory_summary.md` 与 `MEMORY.md` 的高层索引块。`raw_memories.md`、`rollout_summaries/*.md` 和 `MEMORY.md` 中的 `## Task ...` 明细块属于审计/归档层，不得进入默认 hook recall。
+  - `seed --scope full` 才刷新完整官方记忆语料；它用于人工审计或迁移核查，不作为每次 prompt 的默认路径。
   - `recall` 只读取 SQLite，不执行 Markdown fallback；Markdown 仅保留导入导出与人工审计用途。
-- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k fallback` 与 `context --json` 相关场景通过，确认无 Markdown fallback 的可观察表现。
+- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k fallback` 与 runtime seed 相关场景通过；用真实配置 smoke `seed --scope runtime`，确认 raw/rollout 官方记忆被 prune 出默认索引。
 
 ### 7. public repo 测试夹具也不得包含真实本机路径
 

@@ -36,6 +36,7 @@ def handle_session_start(config: MemoryConfig, store: MemoryStore, payload: dict
         store,
         memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
+        scope="runtime",
     )
     query = f"{repo or ''} workspace memory rules preferences".strip()
     context = recall_context(config, store, repo=repo, query=query)
@@ -51,6 +52,7 @@ def handle_user_prompt_submit(config: MemoryConfig, store: MemoryStore, payload:
         store,
         memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
+        scope="runtime",
     )
     query = f"{repo or ''} {prompt}".strip()
     context = recall_context(config, store, repo=repo, query=query)

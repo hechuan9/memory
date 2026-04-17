@@ -36,6 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     seed = subparsers.add_parser("seed", help="Index official Codex memories")
     seed.add_argument("--config", help="Path to local config.toml")
+    seed.add_argument("--scope", choices=("runtime", "full"), default="full", help="Official memory source scope")
     seed.add_argument("--json", action="store_true", help="Emit JSON")
     seed.set_defaults(func=cmd_seed)
 
@@ -219,9 +220,11 @@ def cmd_seed(args: argparse.Namespace) -> int:
         store,
         memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
+        scope=args.scope,
     )
     payload = {
         "seed_source": "official_memories",
+        "scope": args.scope,
         "indexed_files": stats.indexed_files,
         "indexed_items": stats.indexed_items,
         "pruned_items": stats.pruned_items,
@@ -260,6 +263,7 @@ def cmd_context(args: argparse.Namespace) -> int:
         store,
         memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
+        scope="runtime",
     )
     results = store.recall(
         args.query,
@@ -497,6 +501,7 @@ def cmd_dream_report(args: argparse.Namespace) -> int:
         store,
         memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
+        scope="runtime",
     )
     results = store.recall(
         args.query,
@@ -512,6 +517,7 @@ def cmd_dream_report(args: argparse.Namespace) -> int:
         "status": _status_payload(config, store),
         "seed": {
             "official_memories": {
+                "scope": "runtime",
                 "indexed_files": seed_stats.indexed_files,
                 "indexed_items": seed_stats.indexed_items,
                 "pruned_items": seed_stats.pruned_items,

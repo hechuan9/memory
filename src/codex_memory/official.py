@@ -3,13 +3,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from codex_memory.store import MemoryStore
 
 
 TOP_LEVEL_SECTION_RE = re.compile(r"^\s*#{1,2}\s+")
-CWD_RE = re.compile(r"^\s*cwd\s*:\s*(.+?)\s*$", re.IGNORECASE)
+CWD_RE = re.compile(r"(?:^|\b)cwd\s*[:=]\s*([^;\n,]+)", re.IGNORECASE)
 OFFICIAL_SOURCE_TAG = "source:official-codex-memory"
+OfficialSeedScope = Literal["runtime", "full"]
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,7 @@ def seed_official_memories(
     *,
     memories_dir: Path | None,
     repo_names: list[str] | tuple[str, ...] = (),
+    scope: OfficialSeedScope = "full",
 ) -> OfficialSeedStats:
     indexed_files = 0
     indexed_items = 0
@@ -32,12 +35,7 @@ def seed_official_memories(
     if memories_dir is None or not memories_dir.exists():
         return OfficialSeedStats(indexed_files=0, indexed_items=0, pruned_items=0)
 
-    source_paths = [
-        memories_dir / "raw_memories.md",
-        memories_dir / "memory_summary.md",
-        memories_dir / "MEMORY.md",
-        *sorted((memories_dir / "rollout_summaries").glob("*.md")),
-    ]
+    source_paths = _source_paths(memories_dir, scope=scope)
     current_source_paths: set[str] = set()
 
     for source_path in source_paths:
@@ -51,6 +49,7 @@ def seed_official_memories(
             path=source_path,
             repo_names=tuple(repo_names),
             force_global=source_path.name == "raw_memories.md",
+            scope=scope,
         )
         indexed_items += len(item_ids)
         pruned_items += _delete_official_source_items_except(
@@ -71,18 +70,38 @@ def seed_official_memories(
     )
 
 
+def _source_paths(memories_dir: Path, *, scope: OfficialSeedScope) -> list[Path]:
+    high_signal_paths = [
+        memories_dir / "memory_summary.md",
+        memories_dir / "MEMORY.md",
+    ]
+    if scope == "runtime":
+        existing_high_signal_paths = [path for path in high_signal_paths if path.exists()]
+        if existing_high_signal_paths:
+            return existing_high_signal_paths
+
+    return [
+        memories_dir / "raw_memories.md",
+        *high_signal_paths,
+        *sorted((memories_dir / "rollout_summaries").glob("*.md")),
+    ]
+
+
 def _seed_source_file(
     store: MemoryStore,
     *,
     path: Path,
     repo_names: tuple[str, ...],
     force_global: bool,
+    scope: OfficialSeedScope,
 ) -> list[str]:
     item_ids: list[str] = []
 
     for start_line, chunk in _section_chunks(path):
         content = chunk.strip()
         if not content:
+            continue
+        if scope == "runtime" and _is_low_signal_runtime_chunk(path, content):
             continue
 
         repo = _infer_repo_from_cwd(content, repo_names) if not force_global else None
@@ -104,6 +123,12 @@ def _seed_source_file(
     return item_ids
 
 
+def _is_low_signal_runtime_chunk(path: Path, content: str) -> bool:
+    if path.name != "MEMORY.md":
+        return False
+    return content.lstrip().startswith("## Task ")
+
+
 def _infer_repo_from_cwd(chunk: str, repo_names: tuple[str, ...]) -> str | None:
     cwd = _extract_cwd(chunk)
     if not cwd:
@@ -119,9 +144,9 @@ def _infer_repo_from_cwd(chunk: str, repo_names: tuple[str, ...]) -> str | None:
 
 def _extract_cwd(chunk: str) -> str | None:
     for line in chunk.splitlines():
-        match = CWD_RE.match(line)
+        match = CWD_RE.search(line)
         if match:
-            return match.group(1)
+            return match.group(1).strip()
     return None
 
 

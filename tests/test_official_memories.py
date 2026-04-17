@@ -53,6 +53,73 @@ def test_seed_official_memories_indexes_raw_and_rollout_sources(tmp_path):
     assert rollout_item[1] == "backend"
 
 
+def test_runtime_seed_indexes_only_high_signal_sources_and_prunes_full_sources(tmp_path):
+    memories_dir = tmp_path / "memories"
+    rollout_dir = memories_dir / "rollout_summaries"
+    rollout_dir.mkdir(parents=True)
+
+    raw_memories = memories_dir / "raw_memories.md"
+    memory_summary = memories_dir / "memory_summary.md"
+    memory_index = memories_dir / "MEMORY.md"
+    rollout_summary = rollout_dir / "backend.md"
+
+    raw_memories.write_text(
+        "# Raw thread\n\ncwd: /workspace/climamind/backend\n\n- Process transcript detail.\n",
+        encoding="utf-8",
+    )
+    memory_summary.write_text("## User preferences\n\n- Always reply in Chinese.\n", encoding="utf-8")
+    memory_index.write_text(
+        "## Backend rules\n\n"
+        "applies_to: cwd=/workspace/climamind/backend; reuse_rule=safe\n\n"
+        "- Backend changes run pre_merge_gate.\n\n"
+        "## Task 1: One-off backend rollout, success\n\n"
+        "### rollout_summary_files\n\n"
+        "- rollout_summaries/backend.md (rollout_path=/tmp/session.jsonl)\n",
+        encoding="utf-8",
+    )
+    rollout_summary.write_text(
+        "# Rollout summary\n\ncwd: /workspace/climamind/backend\n\n- One-off command output.\n",
+        encoding="utf-8",
+    )
+
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+
+    full = seed_official_memories(
+        store,
+        memories_dir=memories_dir,
+        repo_names=("backend",),
+        scope="full",
+    )
+    assert full.indexed_files == 4
+    assert full.indexed_items == 5
+
+    runtime = seed_official_memories(
+        store,
+        memories_dir=memories_dir,
+        repo_names=("backend",),
+        scope="runtime",
+    )
+
+    assert runtime.indexed_files == 2
+    assert runtime.indexed_items == 2
+    assert runtime.pruned_items == 3
+
+    with store._connect() as connection:
+        rows = connection.execute(
+            "SELECT bank_id, repo, source_path, content FROM memory_items WHERE kind = 'official_memory'"
+        ).fetchall()
+
+    assert {row["source_path"] for row in rows} == {str(memory_summary), str(memory_index)}
+    assert not any("Process transcript detail" in row["content"] for row in rows)
+    assert not any("One-off command output" in row["content"] for row in rows)
+    assert not any("rollout_path=" in row["content"] for row in rows)
+
+    backend_rows = [row for row in rows if row["source_path"] == str(memory_index)]
+    assert backend_rows[0]["bank_id"] == "repo:backend"
+    assert backend_rows[0]["repo"] == "backend"
+
+
 def test_seed_official_memories_missing_memories_dir_is_noop(tmp_path):
     store = MemoryStore(tmp_path / "memory.sqlite3")
     store.initialize()
