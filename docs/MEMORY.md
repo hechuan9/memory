@@ -54,6 +54,6 @@
 - 问题模式：若 `recall` 仍把 Markdown 作为并列运行时源，官方记忆上游将与本地运行时行为脱节，迁移指标失真。
 - 根因：运行时路径已经切为官方 `official_memories_dir`，继续容许 Markdown 回退会造成重复/冲突的真源语义。
 - 预防动作：
-  - `seed`、`context`、`dream-report`、Hook 负责刷新官方 `official_memories_dir`，写入 SQLite 索引。
+  - `seed`、`context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）负责刷新官方 `official_memories_dir`，写入 SQLite 索引。
   - `recall` 只读取 SQLite，不执行 Markdown fallback；Markdown 仅保留导入导出与人工审计用途。
 - 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k fallback` 与 `context --json` 相关场景通过，确认无 Markdown fallback 的可观察表现。
