@@ -119,7 +119,7 @@ repo_names = ["model"]
     assert payload["results"][0]["source_path"] == str(memory_path)
 
 
-def test_context_uses_recall_before_markdown_fallback(tmp_path):
+def test_context_uses_official_memories_recall(tmp_path):
     workspace = tmp_path / "workspace"
     repo = workspace / "backend"
     repo_docs = repo / "docs"
@@ -157,6 +157,50 @@ repo_names = ["backend"]
         "backend",
         "--query",
         "backend pre_merge_gate",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "recall"
+    assert payload["results"][0]["bank_id"] == "repo:backend"
+    assert payload["results"][0]["source_path"] == str(memory_path)
+
+
+def test_context_without_prior_seed_still_recalls_official_memories(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "backend"
+    global_memory = tmp_path / "memory.md"
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="backend",
+        content="- Backend runs through offline audit checks.\n",
+    )
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
+    (workspace / "AGENTS.md").parent.mkdir(parents=True, exist_ok=True)
+    (workspace / "AGENTS.md").write_text("- Use uv for Python commands.\n", encoding="utf-8")
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
+repo_names = ["backend"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "context",
+        "--config",
+        str(config),
+        "--repo",
+        "backend",
+        "--query",
+        "backend offline audit",
         "--json",
     )
 
@@ -207,6 +251,57 @@ repo_names = ["backend"]
     payload = json.loads(result.stdout)
     assert payload["mode"] == "empty"
     assert payload["results"] == []
+
+
+def test_context_fallback_always_retired_noop_no_markdown(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "backend"
+    repo_docs = repo / "docs"
+    repo_docs.mkdir(parents=True)
+    global_memory = tmp_path / "memory.md"
+    official_memories_dir = tmp_path / "official_memories"
+    official_memories_dir.mkdir()
+    config = tmp_path / "config.toml"
+
+    global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
+    (workspace / "AGENTS.md").write_text(
+        "- Project docs are only a secondary guide.\n",
+        encoding="utf-8",
+    )
+    (repo_docs / "MEMORY.md").write_text(
+        "# backend MEMORY\n\n- If fallback still existed, this should appear.\n",
+        encoding="utf-8",
+    )
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+global_memory_path = "{global_memory.as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
+repo_names = ["backend"]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = run_cli(
+        "context",
+        "--config",
+        str(config),
+        "--repo",
+        "backend",
+        "--fallback",
+        "always",
+        "--query",
+        "fallback line",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "empty"
+    assert payload["results"] == []
+    assert payload["fallback"] == {"requested": "always", "status": "retired"}
 
 
 def test_hook_session_start_emits_additional_context(tmp_path):

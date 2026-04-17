@@ -56,7 +56,12 @@ def build_parser() -> argparse.ArgumentParser:
     context.add_argument("--limit", type=int, default=12)
     context.add_argument("--max-session-events", type=int, default=3)
     context.add_argument("--max-chars", type=int, default=4000)
-    context.add_argument("--fallback", choices=("empty", "always", "never"), default="empty")
+    context.add_argument(
+        "--fallback",
+        choices=("empty", "always", "never"),
+        default="empty",
+        help="Deprecated. Markdown fallback is retired; this flag is now a no-op.",
+    )
     context.add_argument("--json", action="store_true", help="Emit JSON")
     context.set_defaults(func=cmd_context)
 
@@ -251,6 +256,11 @@ def cmd_recall(args: argparse.Namespace) -> int:
 def cmd_context(args: argparse.Namespace) -> int:
     config = _config(args)
     store = _store(config)
+    seed_official_memories(
+        store,
+        memories_dir=config.official_memories_dir,
+        repo_names=config.repo_names,
+    )
     results = store.recall(
         args.query,
         repo=args.repo,
@@ -261,6 +271,10 @@ def cmd_context(args: argparse.Namespace) -> int:
     payload = {
         "mode": "recall" if results else "empty",
         "results": [_item_payload(item) for item in results],
+        "fallback": {
+            "requested": args.fallback,
+            "status": "retired",
+        },
     }
     _emit_context_payload(payload, json_output=args.json)
     return 0
