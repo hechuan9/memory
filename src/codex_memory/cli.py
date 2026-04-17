@@ -14,7 +14,7 @@ from codex_memory.hooks import (
     handle_user_prompt_submit,
     loads_hook_payload,
 )
-from codex_memory.sources import MarkdownContextItem, collect_markdown_context, seed_markdown_sources
+from codex_memory.official import seed_official_memories
 from codex_memory.store import MemoryItem, MemoryStore
 from codex_memory.skills import write_skill_candidate
 
@@ -34,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", help="Path to local config.toml")
     subparsers = parser.add_subparsers(required=True)
 
-    seed = subparsers.add_parser("seed", help="Index configured Markdown memory sources")
+    seed = subparsers.add_parser("seed", help="Index official Codex memories")
     seed.add_argument("--config", help="Path to local config.toml")
     seed.add_argument("--json", action="store_true", help="Emit JSON")
     seed.set_defaults(func=cmd_seed)
@@ -49,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
     recall.add_argument("--json", action="store_true", help="Emit JSON")
     recall.set_defaults(func=cmd_recall)
 
-    context = subparsers.add_parser("context", help="Emit recall context with Markdown fallback")
+    context = subparsers.add_parser("context", help="Emit recall context")
     context.add_argument("--config", help="Path to local config.toml")
     context.add_argument("--repo", help="Current repository name")
     context.add_argument("--query", required=True, help="Context query")
@@ -210,13 +210,13 @@ def build_parser() -> argparse.ArgumentParser:
 def cmd_seed(args: argparse.Namespace) -> int:
     config = _config(args)
     store = _store(config)
-    stats = seed_markdown_sources(
+    stats = seed_official_memories(
         store,
-        global_memory_path=config.global_memory_path,
-        workspace_root=config.workspace_root,
+        memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
     )
     payload = {
+        "seed_source": "official_memories",
         "indexed_files": stats.indexed_files,
         "indexed_items": stats.indexed_items,
         "pruned_items": stats.pruned_items,
@@ -258,23 +258,10 @@ def cmd_context(args: argparse.Namespace) -> int:
         max_chars=args.max_chars,
         max_session_events=args.max_session_events,
     )
-    mode = "recall"
-    if args.fallback == "always" or (not results and args.fallback == "empty"):
-        fallback_results = collect_markdown_context(
-            query=args.query,
-            repo=args.repo,
-            global_memory_path=config.global_memory_path,
-            workspace_root=config.workspace_root,
-            repo_names=config.repo_names,
-            limit=args.limit,
-            max_chars=args.max_chars,
-        )
-        if fallback_results:
-            mode = "fallback-markdown"
-            payload = {"mode": mode, "results": [_markdown_item_payload(item) for item in fallback_results]}
-            _emit_context_payload(payload, json_output=args.json)
-            return 0
-    payload = {"mode": mode, "results": [_item_payload(item) for item in results]}
+    payload = {
+        "mode": "recall" if results else "empty",
+        "results": [_item_payload(item) for item in results],
+    }
     _emit_context_payload(payload, json_output=args.json)
     return 0
 
@@ -492,10 +479,9 @@ def cmd_export_markdown(args: argparse.Namespace) -> int:
 def cmd_dream_report(args: argparse.Namespace) -> int:
     config = _config(args)
     store = _store(config)
-    seed_stats = seed_markdown_sources(
+    seed_stats = seed_official_memories(
         store,
-        global_memory_path=config.global_memory_path,
-        workspace_root=config.workspace_root,
+        memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
     )
     results = store.recall(
@@ -505,25 +491,17 @@ def cmd_dream_report(args: argparse.Namespace) -> int:
         max_chars=args.max_chars,
         max_session_events=args.max_session_events,
     )
-    context_mode = "recall"
-    if not results:
-        fallback_results = collect_markdown_context(
-            query=args.query,
-            repo=args.repo,
-            global_memory_path=config.global_memory_path,
-            workspace_root=config.workspace_root,
-            repo_names=config.repo_names,
-            limit=args.limit,
-            max_chars=args.max_chars,
-        )
-        context_mode = "fallback-markdown" if fallback_results else "empty"
-        context_results: list[dict[str, Any]] = [_markdown_item_payload(item) for item in fallback_results]
-    else:
-        context_results = [_item_payload(item) for item in results]
+    context_mode = "recall" if results else "empty"
+    context_results: list[dict[str, Any]] = [_item_payload(item) for item in results]
     prune_stats = prune_imported_events(store, apply=False, limit=500)
     payload = {
         "status": _status_payload(config, store),
         "seed": {
+            "official_memories": {
+                "indexed_files": seed_stats.indexed_files,
+                "indexed_items": seed_stats.indexed_items,
+                "pruned_items": seed_stats.pruned_items,
+            },
             "indexed_files": seed_stats.indexed_files,
             "indexed_items": seed_stats.indexed_items,
             "pruned_items": seed_stats.pruned_items,
@@ -614,31 +592,12 @@ def _item_payload(item: MemoryItem) -> dict[str, Any]:
     }
 
 
-def _markdown_item_payload(item: MarkdownContextItem) -> dict[str, Any]:
-    return {
-        "id": None,
-        "bank_id": item.bank_id,
-        "repo": item.repo,
-        "kind": item.kind,
-        "status": "fallback",
-        "source_path": item.source_path,
-        "source_anchor": item.source_anchor,
-        "content": item.content,
-        "evidence": "",
-        "tags": [],
-        "score": 0.0,
-    }
-
-
 def _emit_context_payload(payload: dict[str, Any], *, json_output: bool) -> None:
     if json_output:
         _emit(payload, json_output=True)
         return
     print("<memory-context>")
-    if payload["mode"] == "fallback-markdown":
-        print("[System note: fallback Markdown memory context, not new user input.]")
-    else:
-        print("[System note: recalled memory context from codex-memory, not new user input.]")
+    print("[System note: recalled memory context from codex-memory, not new user input.]")
     for item in payload["results"]:
         print(f"- [{item['bank_id']}/{item['kind']}] {item['content']}")
     print("</memory-context>")

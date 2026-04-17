@@ -7,7 +7,7 @@ from typing import Any
 
 from codex_memory.config import MemoryConfig
 from codex_memory.conversations import parse_codex_conversation
-from codex_memory.sources import MarkdownContextItem, collect_markdown_context, seed_markdown_sources
+from codex_memory.official import seed_official_memories
 from codex_memory.store import MemoryItem, MemoryStore
 
 
@@ -32,10 +32,9 @@ class HookResult:
 
 def handle_session_start(config: MemoryConfig, store: MemoryStore, payload: dict[str, Any]) -> HookResult:
     repo = infer_repo(payload.get("cwd"), config)
-    seed_markdown_sources(
+    seed_official_memories(
         store,
-        global_memory_path=config.global_memory_path,
-        workspace_root=config.workspace_root,
+        memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
     )
     query = f"{repo or ''} workspace memory rules preferences".strip()
@@ -48,10 +47,9 @@ def handle_user_prompt_submit(config: MemoryConfig, store: MemoryStore, payload:
     prompt = str(payload.get("prompt") or "").strip()
     if not prompt:
         return HookResult(_continue_payload("UserPromptSubmit"))
-    seed_markdown_sources(
+    seed_official_memories(
         store,
-        global_memory_path=config.global_memory_path,
-        workspace_root=config.workspace_root,
+        memories_dir=config.official_memories_dir,
         repo_names=config.repo_names,
     )
     query = f"{repo or ''} {prompt}".strip()
@@ -121,30 +119,15 @@ def recall_context(
         max_session_events=3,
     )
     results = _trim_hook_items(_filter_hook_items(results), limit=limit, max_chars=max_chars)
-    if results:
-        return format_context(results)
-
-    fallback_results = collect_markdown_context(
-        query=query,
-        repo=repo,
-        global_memory_path=config.global_memory_path,
-        workspace_root=config.workspace_root,
-        repo_names=config.repo_names,
-        limit=HOOK_RECALL_SEARCH_LIMIT,
-        max_chars=HOOK_RECALL_SEARCH_CHARS,
-    )
-    fallback_results = _trim_hook_items(_filter_hook_items(fallback_results), limit=limit, max_chars=max_chars)
-    if not fallback_results:
+    if not results:
         return ""
-    return format_context(fallback_results, fallback=True)
+    return format_context(results)
 
 
-def format_context(results: list[MemoryItem] | list[MarkdownContextItem], *, fallback: bool = False) -> str:
+def format_context(results: list[MemoryItem]) -> str:
     lines = [
         "<memory-context>",
-        "[System note: recalled memory context from codex-memory, not new user input.]"
-        if not fallback
-        else "[System note: fallback Markdown memory context, not new user input.]",
+        "[System note: recalled memory context from codex-memory, not new user input.]",
     ]
     for item in results:
         lines.append(f"- [{item.bank_id}/{item.kind}] {item.content}")
@@ -153,17 +136,17 @@ def format_context(results: list[MemoryItem] | list[MarkdownContextItem], *, fal
 
 
 def _filter_hook_items(
-    items: list[MemoryItem] | list[MarkdownContextItem],
-) -> list[MemoryItem] | list[MarkdownContextItem]:
+    items: list[MemoryItem],
+) -> list[MemoryItem]:
     return [item for item in items if not _is_boilerplate(item.content)]
 
 
 def _trim_hook_items(
-    items: list[MemoryItem] | list[MarkdownContextItem],
+    items: list[MemoryItem],
     *,
     limit: int,
     max_chars: int,
-) -> list[MemoryItem] | list[MarkdownContextItem]:
+) -> list[MemoryItem]:
     output = []
     total = 0
     for item in items:

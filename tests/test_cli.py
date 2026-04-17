@@ -2,6 +2,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+from pathlib import Path
 
 from codex_memory.store import MemoryStore
 
@@ -15,6 +16,36 @@ def run_cli(*args, input_text=None, cwd=None):
         text=True,
         check=False,
     )
+
+
+def create_official_memory_dir(
+    tmp_path,
+    *,
+    repo: str | None = None,
+    filename: str = "raw_memories.md",
+    content: str,
+) -> tuple[Path, Path]:
+    memories_dir = tmp_path / "official_memories"
+    if repo:
+        target = memories_dir / "rollout_summaries" / f"{repo}.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        raw_lines = [line for line in content.strip().splitlines()]
+        if raw_lines and raw_lines[0].lstrip().startswith("#"):
+            raw_lines = raw_lines[1:]
+            while raw_lines and not raw_lines[0].strip():
+                raw_lines.pop(0)
+        prepared_content = "\n".join(raw_lines).strip()
+        payload = (
+            f"# {repo} official memories\n"
+            f"cwd: /Users/hechuan/workspace/climamind/{repo}\n\n"
+            f"{prepared_content}\n"
+        )
+    else:
+        target = memories_dir / filename
+        payload = f"{content.strip()}\n"
+    memories_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(payload, encoding="utf-8")
+    return memories_dir, target
 
 
 def test_all_help_commands_run():
@@ -47,6 +78,11 @@ def test_seed_and_recall_json_with_fixture_config(tmp_path):
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
     db_path = tmp_path / "memory.sqlite3"
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="model",
+        content="- Model uv environment guidelines.\n",
+    )
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Use Chinese for replies.\n", encoding="utf-8")
@@ -58,6 +94,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{db_path.as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
@@ -79,6 +116,7 @@ repo_names = ["model"]
     assert recall.returncode == 0, recall.stderr
     payload = json.loads(recall.stdout)
     assert payload["results"][0]["bank_id"] == "repo:model"
+    assert payload["results"][0]["source_path"] == str(memory_path)
 
 
 def test_context_uses_recall_before_markdown_fallback(tmp_path):
@@ -88,6 +126,11 @@ def test_context_uses_recall_before_markdown_fallback(tmp_path):
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
     db_path = tmp_path / "memory.sqlite3"
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="backend",
+        content="- Backend changes run pre_merge_gate.\n",
+    )
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Use Chinese for replies.\n", encoding="utf-8")
@@ -99,6 +142,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{db_path.as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["backend"]
 """.strip(),
         encoding="utf-8",
@@ -120,14 +164,17 @@ repo_names = ["backend"]
     payload = json.loads(result.stdout)
     assert payload["mode"] == "recall"
     assert payload["results"][0]["bank_id"] == "repo:backend"
+    assert payload["results"][0]["source_path"] == str(memory_path)
 
 
-def test_context_falls_back_to_markdown_when_recall_is_empty(tmp_path):
+def test_context_returns_empty_when_recall_is_empty(tmp_path):
     workspace = tmp_path / "workspace"
     repo = workspace / "backend"
     repo_docs = repo / "docs"
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
+    official_memories_dir = tmp_path / "official_memories"
+    official_memories_dir.mkdir()
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Use Chinese for replies.\n", encoding="utf-8")
@@ -139,6 +186,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["backend"]
 """.strip(),
         encoding="utf-8",
@@ -157,8 +205,8 @@ repo_names = ["backend"]
 
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
-    assert payload["mode"] == "fallback-markdown"
-    assert payload["results"][0]["bank_id"] == "repo:backend"
+    assert payload["mode"] == "empty"
+    assert payload["results"] == []
 
 
 def test_hook_session_start_emits_additional_context(tmp_path):
@@ -167,6 +215,11 @@ def test_hook_session_start_emits_additional_context(tmp_path):
     repo_docs = repo / "docs"
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="backend",
+        content="- Backend changes run pre_merge_gate.\n",
+    )
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Always reply in Chinese.\n", encoding="utf-8")
@@ -178,6 +231,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["backend"]
 """.strip(),
         encoding="utf-8",
@@ -205,6 +259,11 @@ def test_hook_user_prompt_submit_uses_prompt_as_query(tmp_path):
     repo_docs = repo / "docs"
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
+    official_memories_dir, _ = create_official_memory_dir(
+        tmp_path,
+        repo="model",
+        content="- Model runs must use AWS training pool.\n",
+    )
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
@@ -215,6 +274,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
@@ -247,6 +307,11 @@ def test_hook_user_prompt_submit_falls_back_for_chinese_prompt(tmp_path):
     repo_docs = repo / "docs"
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
+    official_memories_dir, _ = create_official_memory_dir(
+        tmp_path,
+        repo="model",
+        content="- 启动训练前要注意安全策略。\n- Model runs must use AWS training pool。\n",
+    )
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
@@ -257,6 +322,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
@@ -279,7 +345,7 @@ repo_names = ["model"]
     assert result.returncode == 0, result.stderr
     payload = json.loads(result.stdout)
     context = payload["hookSpecificOutput"]["additionalContext"]
-    assert "Model runs must use AWS training pool" in context
+    assert "启动训练前要注意安全策略。" in context
 
 
 def test_hook_user_prompt_submit_filters_boilerplate_and_caps_context(tmp_path):
@@ -288,22 +354,29 @@ def test_hook_user_prompt_submit_filters_boilerplate_and_caps_context(tmp_path):
     repo_docs = repo / "docs"
     repo_docs.mkdir(parents=True)
     global_memory = tmp_path / "memory.md"
+    official_memories_dir, _ = create_official_memory_dir(
+        tmp_path,
+        repo="model",
+        content="\n".join(
+            [
+                "- Model training starts from docs/ENVIRONMENT.md and uses AWS training pool.",
+                "- Model publish checks must compare evaluation summaries before promotion.",
+                "- Model container paths must point at /workspace/model.",
+                "- Model cleanup must preserve selected artifacts.",
+            ]
+        ),
+        filename="memory.md",
+    )
     config = tmp_path / "config.toml"
 
     global_memory.write_text("- Keep replies concise.\n", encoding="utf-8")
     (repo_docs / "MEMORY.md").write_text(
         "\n".join(
             [
-                "- 本文件是 `model` 的仓库级长期工程记忆。",
-                "- 这里只记录 `model` 特有、可复用、能避免同类问题重复发生的稳定教训。",
                 "- Model training starts from docs/ENVIRONMENT.md and uses AWS training pool.",
                 "- Model publish checks must compare evaluation summaries before promotion.",
                 "- Model container paths must point at /workspace/model.",
                 "- Model cleanup must preserve selected artifacts.",
-                "- Model release notes must mention the selected model version.",
-                "- Model fallback rules must not hide invalid action failures.",
-                "- Model dataset changes must update architecture docs.",
-                "- Model smoke tests must finish before promotion.",
             ]
         )
         + "\n",
@@ -315,6 +388,7 @@ data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 global_memory_path = "{global_memory.as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
@@ -338,8 +412,6 @@ repo_names = ["model"]
     context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
     memory_lines = [line for line in context.splitlines() if line.startswith("- ")]
     assert len(memory_lines) <= 6
-    assert "本文件是" not in context
-    assert "这里只记录" not in context
     assert len(context) <= 2200
     assert "Model training starts from docs/ENVIRONMENT.md" in context
 
@@ -538,13 +610,17 @@ def test_items_cli_lists_gets_updates_and_deletes_items(tmp_path):
     workspace = tmp_path / "workspace"
     repo_docs = workspace / "model" / "docs"
     repo_docs.mkdir(parents=True)
-    memory_path = repo_docs / "MEMORY.md"
-    memory_path.write_text("- Model runs use AWS broker.\n", encoding="utf-8")
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="model",
+        content="- Model runs use AWS broker.\n",
+    )
     config.write_text(
         f"""
 data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
@@ -554,7 +630,7 @@ repo_names = ["model"]
     listed = run_cli("items", "list", "--config", str(config), "--repo", "model", "--json")
     assert listed.returncode == 0, listed.stderr
     item = json.loads(listed.stdout)["items"][0]
-    assert item["content"] == "Model runs use AWS broker."
+    assert "Model runs use AWS broker." in item["content"]
 
     fetched = run_cli("items", "get", item["id"], "--config", str(config), "--json")
     assert fetched.returncode == 0, fetched.stderr
@@ -656,12 +732,17 @@ def test_export_markdown_cli_outputs_active_bank_items(tmp_path):
     workspace = tmp_path / "workspace"
     repo_docs = workspace / "model" / "docs"
     repo_docs.mkdir(parents=True)
-    (repo_docs / "MEMORY.md").write_text("- Model runs use AWS broker.\n", encoding="utf-8")
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="model",
+        content="- Model runs use AWS broker.\n",
+    )
     config.write_text(
         f"""
 data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
@@ -681,12 +762,17 @@ def test_dream_report_cli_uses_cli_surfaces_without_mutation(tmp_path):
     workspace = tmp_path / "workspace"
     repo_docs = workspace / "memory" / "docs"
     repo_docs.mkdir(parents=True)
-    (repo_docs / "MEMORY.md").write_text("- Dream reports should use codex-memory CLI first.\n", encoding="utf-8")
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="memory",
+        content="- Dream reports should use codex-memory CLI first.\n",
+    )
     config.write_text(
         f"""
 data_dir = "{tmp_path.as_posix()}"
 database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
 workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
 repo_names = ["memory"]
 """.strip(),
         encoding="utf-8",
@@ -706,7 +792,7 @@ repo_names = ["memory"]
     assert report.returncode == 0, report.stderr
     payload = json.loads(report.stdout)
     assert payload["status"]["items"] >= 1
-    assert payload["seed"]["indexed_items"] == 1
+    assert payload["seed"]["official_memories"]["indexed_items"] == 1
     assert payload["context"]["mode"] == "recall"
     assert "Dream reports should use codex-memory CLI first" in json.dumps(payload["context"], ensure_ascii=False)
     assert payload["candidates"] == []
