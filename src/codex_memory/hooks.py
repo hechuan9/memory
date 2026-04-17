@@ -7,7 +7,6 @@ from typing import Any
 
 from codex_memory.config import MemoryConfig
 from codex_memory.conversations import parse_codex_conversation
-from codex_memory.official import seed_official_memories
 from codex_memory.store import MemoryItem, MemoryStore
 
 
@@ -32,12 +31,6 @@ class HookResult:
 
 def handle_session_start(config: MemoryConfig, store: MemoryStore, payload: dict[str, Any]) -> HookResult:
     repo = infer_repo(payload.get("cwd"), config)
-    seed_official_memories(
-        store,
-        memories_dir=config.official_memories_dir,
-        repo_names=config.repo_names,
-        scope="runtime",
-    )
     query = f"{repo or ''} workspace memory rules preferences".strip()
     context = recall_context(config, store, repo=repo, query=query)
     return HookResult(_additional_context_payload("SessionStart", context))
@@ -48,12 +41,6 @@ def handle_user_prompt_submit(config: MemoryConfig, store: MemoryStore, payload:
     prompt = str(payload.get("prompt") or "").strip()
     if not prompt:
         return HookResult(_continue_payload("UserPromptSubmit"))
-    seed_official_memories(
-        store,
-        memories_dir=config.official_memories_dir,
-        repo_names=config.repo_names,
-        scope="runtime",
-    )
     query = f"{repo or ''} {prompt}".strip()
     context = recall_context(config, store, repo=repo, query=query)
     return HookResult(_additional_context_payload("UserPromptSubmit", context))

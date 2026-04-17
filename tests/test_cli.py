@@ -1,4 +1,5 @@
 import json
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -167,11 +168,11 @@ repo_names = ["backend"]
     assert payload["results"][0]["source_path"] == str(memory_path)
 
 
-def test_context_without_prior_seed_still_recalls_official_memories(tmp_path):
+def test_context_without_prior_seed_returns_empty(tmp_path):
     workspace = tmp_path / "workspace"
     repo = workspace / "backend"
     global_memory = tmp_path / "memory.md"
-    official_memories_dir, memory_path = create_official_memory_dir(
+    official_memories_dir, _ = create_official_memory_dir(
         tmp_path,
         repo="backend",
         content="- Backend runs through offline audit checks.\n",
@@ -192,6 +193,44 @@ repo_names = ["backend"]
 """.strip(),
         encoding="utf-8",
     )
+    result = run_cli(
+        "context",
+        "--config",
+        str(config),
+        "--repo",
+        "backend",
+        "--query",
+        "backend offline audit",
+        "--json",
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["mode"] == "empty"
+    assert payload["results"] == []
+
+
+def test_context_recalls_seeded_sqlite_when_official_markdown_is_retired(tmp_path):
+    workspace = tmp_path / "workspace"
+    repo = workspace / "backend"
+    official_memories_dir, memory_path = create_official_memory_dir(
+        tmp_path,
+        repo="backend",
+        content="- Backend runs through offline audit checks.\n",
+    )
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"""
+data_dir = "{tmp_path.as_posix()}"
+database_path = "{(tmp_path / "memory.sqlite3").as_posix()}"
+workspace_root = "{workspace.as_posix()}"
+official_memories_dir = "{official_memories_dir.as_posix()}"
+repo_names = ["backend"]
+""".strip(),
+        encoding="utf-8",
+    )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
+    shutil.rmtree(official_memories_dir)
 
     result = run_cli(
         "context",
@@ -235,6 +274,7 @@ repo_names = ["backend"]
 """.strip(),
         encoding="utf-8",
     )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
 
     result = run_cli(
         "context",
@@ -331,6 +371,7 @@ repo_names = ["backend"]
 """.strip(),
         encoding="utf-8",
     )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
 
     result = run_cli(
         "hook",
@@ -374,6 +415,7 @@ repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
     )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
 
     result = run_cli(
         "hook",
@@ -422,6 +464,7 @@ repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
     )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
 
     result = run_cli(
         "hook",
@@ -488,6 +531,7 @@ repo_names = ["model"]
 """.strip(),
         encoding="utf-8",
     )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
 
     result = run_cli(
         "hook",
@@ -872,6 +916,8 @@ repo_names = ["memory"]
 """.strip(),
         encoding="utf-8",
     )
+    assert run_cli("seed", "--config", str(config), "--scope", "runtime", "--json").returncode == 0
+    shutil.rmtree(official_memories_dir)
 
     report = run_cli(
         "dream-report",
@@ -887,7 +933,7 @@ repo_names = ["memory"]
     assert report.returncode == 0, report.stderr
     payload = json.loads(report.stdout)
     assert payload["status"]["items"] >= 1
-    assert payload["seed"]["official_memories"]["indexed_items"] == 1
+    assert payload["seed"] == {"mode": "sqlite-canonical", "indexed_items": 0, "pruned_items": 0}
     assert payload["context"]["mode"] == "recall"
     assert "Dream reports should use codex-memory CLI first" in json.dumps(payload["context"], ensure_ascii=False)
     assert payload["candidates"] == []

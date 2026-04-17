@@ -1,5 +1,7 @@
 # 2026-04-17 官方记忆源接入收敛
 
+> Superseded later on 2026-04-17: runtime recall is now SQLite-canonical. Official memory Markdown exports are explicit import/audit inputs for `seed`, not hook/context/dream-report upstream sources.
+
 ## 目标
 
 - 将官方 Codex Memories 明确为运行时上游来源，确认 Markdown 已退役为 fallback/复写 runtime source 的角色。

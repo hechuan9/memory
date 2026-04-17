@@ -48,16 +48,16 @@
 - 预防动作：`retain_session` 只把 transcript 写入 `sessions/session_events` 作为审计归档；只有人工或自动抽取出的 `candidate` 可以进入 `memory_items`，等待 promote/reject。`imported-events prune` 只保留 legacy `session_event` 清理能力，不应成为新写入路径。
 - 合并前验证：测试必须断言 hook/import 后 `session_events` 有归档记录，但 `memory_items` 中 `kind = session_event` 为 `0`；同时保留 legacy prune 测试覆盖旧 `session_event` item。
 
-### 6. runtime recall 必须基于已刷新官方记忆运行
+### 6. runtime recall 必须只读 SQLite canonical store
 
-- 适用范围：`seed`、`context`、`dream-report`、Hook 注入链路。
-- 问题模式：若 `recall` 仍把 Markdown 作为并列运行时源，官方记忆上游将与本地运行时行为脱节，迁移指标失真。
-- 根因：运行时路径已经切为官方 `official_memories_dir`，继续容许 Markdown 回退会造成重复/冲突的真源语义。
+- 适用范围：`context`、`dream-report`、Hook 注入链路与 `seed` 导入命令的边界。
+- 问题模式：若 hook、`context` 或 `dream-report` 在每次运行前自动 seed Markdown/official exports，会把 runtime recall 和导入流程混在一起，造成不必要的 SQLite 写锁、延迟、误 prune 风险和真源语义反复迁移。
+- 根因：SQLite 已经承担 canonical runtime store；继续把 Markdown/official export 当 hook 前置步骤，会让“查询记忆”和“导入/刷新语料”两个动作耦合。
 - 预防动作：
-  - `context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）只刷新 runtime scope：`memory_summary.md` 与 `MEMORY.md` 的高层索引块。`raw_memories.md`、`rollout_summaries/*.md` 和 `MEMORY.md` 中的 `## Task ...` 明细块属于审计/归档层，不得进入默认 hook recall。
-  - `seed --scope full` 才刷新完整官方记忆语料；它用于人工审计或迁移核查，不作为每次 prompt 的默认路径。
-  - `recall` 只读取 SQLite，不执行 Markdown fallback；Markdown 仅保留导入导出与人工审计用途。
-- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k fallback` 与 runtime seed 相关场景通过；用真实配置 smoke `seed --scope runtime`，确认 raw/rollout 官方记忆被 prune 出默认索引。
+  - `context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）只读 SQLite，不调用 `seed_official_memories()`，也不得 prune official memory rows。
+  - `seed --scope runtime/full` 只作为显式导入/迁移命令；Markdown/official exports 属于 import/export 与人工审计材料，不是 runtime 前置依赖。
+  - `recall` 只读取 SQLite，不执行 Markdown fallback。
+- 合并前验证：测试必须覆盖无 prior seed 时 `context` 为空、已 seed 后即使 official Markdown 被移走仍可 recall，以及 `dream-report` 不执行 seed；真实 hook smoke 应确认不访问 Markdown 且保持低延迟。
 
 ### 7. public repo 测试夹具也不得包含真实本机路径
 

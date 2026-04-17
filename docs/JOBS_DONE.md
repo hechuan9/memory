@@ -1,5 +1,6 @@
 # Jobs Done
 
+- 2026-04-17: Completed SQLite-canonical runtime migration: hooks, `context`, and `dream-report` now read SQLite without automatic official-memory seeding or Markdown access; `seed --scope runtime/full` remains an explicit import/migration command.
 - 2026-04-17: Split official memory seeding into `runtime` and `full` scopes, moved hook/context/dream-report refreshes to runtime-only high-signal sources, kept `seed --scope full` for audit backfills, and added coverage for pruning raw/rollout official memory plus `MEMORY.md` task-detail chunks from default recall.
 - 2026-04-17: Documented official Codex Memories as runtime upstream, recorded Markdown recall/fallback retirement in repo docs, and added `docs/superpowers/plans/2026-04-17-official-memory-integration.md`.
 - 2026-04-15: Stopped indexing retained transcript events as `memory_items.kind = session_event`, kept session archives in `sessions/session_events`, updated tests for hook/import archival behavior, and preserved legacy imported-event prune coverage.

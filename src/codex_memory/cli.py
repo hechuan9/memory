@@ -259,12 +259,6 @@ def cmd_recall(args: argparse.Namespace) -> int:
 def cmd_context(args: argparse.Namespace) -> int:
     config = _config(args)
     store = _store(config)
-    seed_official_memories(
-        store,
-        memories_dir=config.official_memories_dir,
-        repo_names=config.repo_names,
-        scope="runtime",
-    )
     results = store.recall(
         args.query,
         repo=args.repo,
@@ -497,12 +491,6 @@ def cmd_export_markdown(args: argparse.Namespace) -> int:
 def cmd_dream_report(args: argparse.Namespace) -> int:
     config = _config(args)
     store = _store(config)
-    seed_stats = seed_official_memories(
-        store,
-        memories_dir=config.official_memories_dir,
-        repo_names=config.repo_names,
-        scope="runtime",
-    )
     results = store.recall(
         args.query,
         repo=args.repo,
@@ -516,15 +504,9 @@ def cmd_dream_report(args: argparse.Namespace) -> int:
     payload = {
         "status": _status_payload(config, store),
         "seed": {
-            "official_memories": {
-                "scope": "runtime",
-                "indexed_files": seed_stats.indexed_files,
-                "indexed_items": seed_stats.indexed_items,
-                "pruned_items": seed_stats.pruned_items,
-            },
-            "indexed_files": seed_stats.indexed_files,
-            "indexed_items": seed_stats.indexed_items,
-            "pruned_items": seed_stats.pruned_items,
+            "mode": "sqlite-canonical",
+            "indexed_items": 0,
+            "pruned_items": 0,
         },
         "context": {
             "mode": context_mode,

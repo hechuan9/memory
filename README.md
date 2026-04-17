@@ -2,15 +2,15 @@
 
 Local-first memory and self-learning helpers for Codex workflows.
 
-This repository provides a Python CLI that seeds official Codex Memories into a local SQLite + FTS5 store, recalls scoped memory for runtime context, audits memory candidates, and manages retention workflows. It is designed to be public-safe: local databases, transcripts, logs, and generated candidate drafts stay outside git.
+This repository provides a Python CLI that keeps local memory in a SQLite + FTS5 store, recalls scoped memory for runtime context, audits memory candidates, and manages retention workflows. It is designed to be public-safe: local databases, transcripts, logs, and generated candidate drafts stay outside git.
 
 ## Why This Exists
 
-Codex Desktop does not currently expose a controllable long-term memory layer for this workflow, so this repository provides one through local `codex-memory` runtime storage. Runtime recall and `context` output are driven from official Codex Memories as the upstream source. Configured Markdown files remain available as legacy import/export and human-audit material only; they are not runtime recall or fallback sources.
+Codex Desktop does not currently expose a controllable long-term memory layer for this workflow, so this repository provides one through local `codex-memory` runtime storage. Runtime recall, hooks, `context`, and `dream-report` read SQLite directly. Markdown files are import/export and human-audit artifacts only; they are not runtime recall, hook, or fallback sources.
 
 ## What It Does
 
-- Seeds official Codex Memories into a local SQLite + FTS5 store.
+- Imports official Codex Memories into a local SQLite + FTS5 store on explicit `seed` runs.
 - Recalls scoped memory from a current repository bank plus a global bank.
 - Retains structured session summaries and candidate long-term memories.
 - Imports local Codex archived conversations in explicit dry-run/write migration steps.
@@ -52,7 +52,7 @@ uv run --python 3.11 codex-memory context --repo model --query "What should I re
 uv run --python 3.11 codex-memory status --config "$CODEX_HOME/memory/config.toml"
 ```
 
-`context` is the preferred startup entrypoint. It seeds the runtime scope of official Codex Memories and reads recall from SQLite only. Runtime scope keeps high-signal summary/index files in the recall path and leaves raw thread exports, per-rollout summaries, and `MEMORY.md` task-detail chunks out of default hook context. Use `seed --scope full` when you need the complete audit corpus. `fallback` is retired and does not consult Markdown runtime sources. `dream-report` is the preferred memory hygiene entrypoint because it combines runtime index refresh, status, recall context, candidate inventory, and imported-event noise checks into one JSON payload.
+`context` is the preferred startup entrypoint. It reads recall from SQLite only and does not refresh Markdown or official memory files. Run `seed --scope runtime` only when intentionally importing high-signal official-memory exports into SQLite; run `seed --scope full` only when intentionally importing the complete audit corpus. `fallback` is retired and does not consult Markdown runtime sources. `dream-report` is the preferred memory hygiene entrypoint because it combines SQLite status, recall context, candidate inventory, and imported-event noise checks into one JSON payload without mutating the recall index.
 
 CLI-first memory hygiene:
 
@@ -88,7 +88,7 @@ uv run --python 3.11 codex-memory hook user-prompt-submit --config "$CODEX_HOME/
 uv run --python 3.11 codex-memory hook stop --config "$CODEX_HOME/memory/config.toml"
 ```
 
-`session-start` and `user-prompt-submit` inject recalled context as additional developer context. `stop` parses the local transcript path from the hook payload and retains safe user/assistant events in SQLite. Hooks still do not edit Markdown exports or install skills.
+`session-start` and `user-prompt-submit` inject recalled context as additional developer context from SQLite only. `stop` parses the local transcript path from the hook payload and retains safe user/assistant events in SQLite. Hooks do not seed Markdown exports, edit Markdown exports, or install skills.
 
 Limit imported session snippets during recall:
 
