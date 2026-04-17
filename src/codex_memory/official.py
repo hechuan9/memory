@@ -53,7 +53,11 @@ def seed_official_memories(
             force_global=source_path.name == "raw_memories.md",
         )
         indexed_items += len(item_ids)
-        pruned_items += store.delete_source_items_except(source_path=str(source_path), keep_item_ids=item_ids)
+        pruned_items += _delete_official_source_items_except(
+            store=store,
+            source_path=str(source_path),
+            keep_item_ids=item_ids,
+        )
 
     pruned_items += _prune_removed_official_sources(
         store=store,
@@ -149,6 +153,36 @@ def _prune_removed_official_sources(
               AND tags_json LIKE ?
         """
         params = [f'%"{OFFICIAL_SOURCE_TAG}"%']
+
+    with store._connect() as connection:
+        stale_ids = [str(row["id"]) for row in connection.execute(stale_query, params).fetchall()]
+    return store.delete_items(stale_ids)
+
+
+def _delete_official_source_items_except(
+    *,
+    store: MemoryStore,
+    source_path: str,
+    keep_item_ids: list[str],
+) -> int:
+    if keep_item_ids:
+        keep_placeholders = ",".join("?" for _ in keep_item_ids)
+        stale_query = f"""
+            SELECT id FROM memory_items
+            WHERE kind = 'official_memory'
+              AND tags_json LIKE ?
+              AND source_path = ?
+              AND id NOT IN ({keep_placeholders})
+        """
+        params: list[str | int] = [f'%"{OFFICIAL_SOURCE_TAG}"%', source_path, *keep_item_ids]
+    else:
+        stale_query = """
+            SELECT id FROM memory_items
+            WHERE kind = 'official_memory'
+              AND tags_json LIKE ?
+              AND source_path = ?
+        """
+        params = [f'%"{OFFICIAL_SOURCE_TAG}"%', source_path]
 
     with store._connect() as connection:
         stale_ids = [str(row["id"]) for row in connection.execute(stale_query, params).fetchall()]

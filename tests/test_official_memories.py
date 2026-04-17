@@ -137,3 +137,42 @@ def test_seed_official_memories_prunes_rows_for_removed_sources(tmp_path):
             "SELECT id FROM memory_items WHERE kind = 'official_memory'",
         ).fetchall()
     assert len(remaining_rows) == 0
+
+
+def test_seed_official_memories_preserves_legacy_rows_with_same_source_path(tmp_path):
+    memories_dir = tmp_path / "memories"
+    memories_dir.mkdir()
+    memory_file = memories_dir / "MEMORY.md"
+    memory_file.write_text(
+        """# Repo memory\n\n- Repo-level memory item.\n""",
+        encoding="utf-8",
+    )
+
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+    legacy_id = store.upsert_item(
+        bank_id="global",
+        kind="lesson",
+        status="active",
+        content="legacy memory file content",
+        source_path=str(memory_file),
+        tags=["repo:model"],
+    )
+
+    first = seed_official_memories(store, memories_dir=memories_dir, repo_names=("backend",))
+
+    with store._connect() as connection:
+        remaining = {
+            row["id"]: row["kind"]
+            for row in connection.execute(
+                "SELECT id, kind FROM memory_items WHERE source_path = ? ORDER BY id",
+                (str(memory_file),),
+            ).fetchall()
+        }
+
+    assert first.indexed_files == 1
+    assert first.indexed_items == 1
+    assert legacy_id in remaining
+    assert remaining[legacy_id] == "lesson"
+    assert len(remaining) == 2
+    assert any(kind == "official_memory" for kind in remaining.values())
