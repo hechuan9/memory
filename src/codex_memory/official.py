@@ -9,6 +9,7 @@ from codex_memory.store import MemoryStore
 
 TOP_LEVEL_SECTION_RE = re.compile(r"^\s*#{1,2}\s+")
 CWD_RE = re.compile(r"^\s*cwd\s*:\s*(.+?)\s*$", re.IGNORECASE)
+OFFICIAL_SOURCE_TAG = "source:official-codex-memory"
 
 
 @dataclass(frozen=True)
@@ -37,10 +38,12 @@ def seed_official_memories(
         memories_dir / "MEMORY.md",
         *sorted((memories_dir / "rollout_summaries").glob("*.md")),
     ]
+    current_source_paths: set[str] = set()
 
     for source_path in source_paths:
         if not source_path.exists():
             continue
+        current_source_paths.add(str(source_path))
 
         indexed_files += 1
         item_ids = _seed_source_file(
@@ -51,6 +54,11 @@ def seed_official_memories(
         )
         indexed_items += len(item_ids)
         pruned_items += store.delete_source_items_except(source_path=str(source_path), keep_item_ids=item_ids)
+
+    pruned_items += _prune_removed_official_sources(
+        store=store,
+        current_source_paths=current_source_paths,
+    )
 
     return OfficialSeedStats(
         indexed_files=indexed_files,
@@ -114,10 +122,37 @@ def _extract_cwd(chunk: str) -> str | None:
 
 
 def _item_tags(repo: str | None) -> list[str]:
-    tags = ["source:official-codex-memory"]
+    tags = [OFFICIAL_SOURCE_TAG]
     if repo:
         tags.append(f"repo:{repo}")
     return tags
+
+
+def _prune_removed_official_sources(
+    *,
+    store: MemoryStore,
+    current_source_paths: set[str],
+) -> int:
+    if current_source_paths:
+        path_placeholders = ",".join("?" for _ in sorted(current_source_paths))
+        stale_query = f"""
+            SELECT id FROM memory_items
+            WHERE kind = 'official_memory'
+              AND tags_json LIKE ?
+              AND source_path NOT IN ({path_placeholders})
+        """
+        params: list[str] = [f'%"{OFFICIAL_SOURCE_TAG}"%'] + sorted(current_source_paths)
+    else:
+        stale_query = """
+            SELECT id FROM memory_items
+            WHERE kind = 'official_memory'
+              AND tags_json LIKE ?
+        """
+        params = [f'%"{OFFICIAL_SOURCE_TAG}"%']
+
+    with store._connect() as connection:
+        stale_ids = [str(row["id"]) for row in connection.execute(stale_query, params).fetchall()]
+    return store.delete_items(stale_ids)
 
 
 def _section_chunks(path: Path) -> list[tuple[int, str]]:

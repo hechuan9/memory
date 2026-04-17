@@ -93,3 +93,47 @@ def test_seed_official_memories_falls_back_to_whole_file_chunk(tmp_path):
     assert kind == "official_memory"
     assert "This memory summary" in content
     assert "source:official-codex-memory" in json.loads(tags_json)
+
+
+def test_seed_official_memories_prunes_rows_for_removed_sources(tmp_path):
+    memories_dir = tmp_path / "memories"
+    rollout_dir = memories_dir / "rollout_summaries"
+    rollout_dir.mkdir(parents=True)
+    rollout_file = rollout_dir / "backend.md"
+    rollout_file.write_text(
+        """# Rollout backend\n\ncwd: /Users/hechuan/workspace/climamind/backend\n\n- Rollout completed.\n""",
+        encoding="utf-8",
+    )
+
+    store = MemoryStore(tmp_path / "memory.sqlite3")
+    store.initialize()
+
+    first = seed_official_memories(
+        store,
+        memories_dir=memories_dir,
+        repo_names=("backend",),
+    )
+    with store._connect() as connection:
+        existing_rows = connection.execute(
+            "SELECT source_path FROM memory_items WHERE kind = 'official_memory'",
+        ).fetchall()
+    assert first.indexed_files == 1
+    assert first.indexed_items == 1
+    assert len(existing_rows) == 1
+    assert existing_rows[0][0] == str(rollout_file)
+
+    rollout_file.unlink()
+    second = seed_official_memories(
+        store,
+        memories_dir=memories_dir,
+        repo_names=("backend",),
+    )
+
+    assert second.indexed_files == 0
+    assert second.indexed_items == 0
+    assert second.pruned_items == 1
+    with store._connect() as connection:
+        remaining_rows = connection.execute(
+            "SELECT id FROM memory_items WHERE kind = 'official_memory'",
+        ).fetchall()
+    assert len(remaining_rows) == 0
