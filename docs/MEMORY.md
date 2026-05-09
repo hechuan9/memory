@@ -32,12 +32,12 @@
 - 预防动作：解析 transcript 前使用 `Path.is_file()` 作为快速失败条件；缺失、空值、目录都按无 transcript 处理并返回合法 hook JSON。
 - 合并前验证：测试覆盖 `transcript_path: None`，并运行真实配置 smoke。
 
-### 4. memory dream 的主入口必须是 CLI 报告，不再人工遍历 Markdown 当主流程
+### 4. memory dream 的主入口必须是 CLI 报告，不再把 Markdown 当流程输入
 
 - 适用范围：`codex-memory dream-report`、daily memory dream automation、`memory-dream` skill，以及任何周期性整理记忆的流程。
-- 问题模式：如果 dream 继续先人工遍历全局 `memory.md`、工作区 `AGENTS.md` 和各仓 `docs/MEMORY.md`，SQLite 里的候选、retained session events、imported-event 噪声和索引健康就会变成旁路，最终无法退役 Markdown 真源。
-- 根因：旧 dream 流程把 Markdown 当长期真源，把 `codex-memory` 只当辅助召回层；这和 CLI-first 迁移目标冲突。
-- 预防动作：周期整理必须先运行 `codex-memory dream-report --json`，并以其中的 `status`、`seed`、`context`、`candidates` 与 `imported_events` 作为日报指标和决策入口。Markdown 只作为 legacy import/export 与必要人工审计材料，不再作为主审查面。
+- 问题模式：如果 dream 继续先人工遍历全局 `memory.md`、工作区 `AGENTS.md` 和各仓 `docs/MEMORY.md`，SQLite 里的候选、retained session events、imported-event 噪声和索引健康就会变成旁路。
+- 根因：旧 dream 流程把 Markdown 当长期运行面，把 `codex-memory` 只当辅助召回层；这和 CLI-first 运行目标冲突。
+- 预防动作：周期整理必须先运行 `codex-memory dream-report --json`，并以其中的 `status`、`seed`、`context`、`candidates` 与 `imported_events` 作为日报指标和决策入口。Markdown export/provenance 不再是日常 dream 输入；除非用户明确要求审计，否则不跟随 `source_path` 回读 Markdown。
 - 合并前验证：`uv run --python 3.12 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.12 codex-memory dream-report --config "${CODEX_HOME}/memory/config.toml" --repo memory --query "memory dream cli" --json`。
 
 ### 5. 会话事件只能归档，不得进入长期召回索引
@@ -51,11 +51,11 @@
 ### 6. runtime recall 必须只读 SQLite canonical store
 
 - 适用范围：`context`、`dream-report`、Hook 注入链路与 `seed` 导入命令的边界。
-- 问题模式：若 hook、`context` 或 `dream-report` 在每次运行前自动 seed Markdown/official exports，会把 runtime recall 和导入流程混在一起，造成不必要的 SQLite 写锁、延迟、误 prune 风险和真源语义反复迁移。
+- 问题模式：若 hook、`context` 或 `dream-report` 在每次运行前自动 seed Markdown/official exports，会把 runtime recall 和导入流程混在一起，造成不必要的 SQLite 写锁、延迟和误 prune 风险。
 - 根因：SQLite 已经承担 canonical runtime store；继续把 Markdown/official export 当 hook 前置步骤，会让“查询记忆”和“导入/刷新语料”两个动作耦合。
 - 预防动作：
   - `context`、`dream-report`、recall-injection hooks（`session-start`/`user-prompt-submit`）只读 SQLite，不调用 `seed_official_memories()`，也不得 prune official memory rows。
-  - `seed --scope runtime/full` 只作为显式导入/迁移命令；Markdown/official exports 属于 import/export 与人工审计材料，不是 runtime 前置依赖。
+  - `seed --scope runtime/full` 只作为显式导入/迁移核验命令；Markdown/official exports 不是 runtime 前置依赖，也不是日常 dream 输入。
   - `recall` 只读取 SQLite，不执行 Markdown fallback。
 - 合并前验证：测试必须覆盖无 prior seed 时 `context` 为空、已 seed 后即使 official Markdown 被移走仍可 recall，以及 `dream-report` 不执行 seed；真实 hook smoke 应确认不访问 Markdown 且保持低延迟。
 
