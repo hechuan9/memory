@@ -22,7 +22,7 @@
 - 问题模式：把 `SessionStart` / `UserPromptSubmit` 的 `hookSpecificOutput` 输出形状复用到 `Stop`，会触发 Codex `stop.command.output` 的 `additionalProperties: false` 校验并报 invalid stop hook JSON output。
 - 根因：不同 hook event 的 stdout schema 不同，`Stop` 只允许 `continue`、`decision`、`reason`、`stopReason`、`suppressOutput`、`systemMessage` 等顶层字段；调试元数据不能放进 stdout。
 - 预防动作：`Stop` 只输出 Codex 允许的最小 JSON，保留统计与诊断只能写入测试断言、stderr 或内部存储，不能新增未登记顶层字段。
-- 合并前验证：运行 `uv run --python 3.11 python -m pytest -q`，并用真实配置 smoke `codex-memory hook stop`，确认 `transcript_path: null` 与有效 transcript 都返回合法 JSON。
+- 合并前验证：运行 `uv run --python 3.12 python -m pytest -q`，并用真实配置 smoke `codex-memory hook stop`，确认 `transcript_path: null` 与有效 transcript 都返回合法 JSON。
 
 ### 3. Hook 输入路径必须先验证为文件
 
@@ -38,7 +38,7 @@
 - 问题模式：如果 dream 继续先人工遍历全局 `memory.md`、工作区 `AGENTS.md` 和各仓 `docs/MEMORY.md`，SQLite 里的候选、retained session events、imported-event 噪声和索引健康就会变成旁路，最终无法退役 Markdown 真源。
 - 根因：旧 dream 流程把 Markdown 当长期真源，把 `codex-memory` 只当辅助召回层；这和 CLI-first 迁移目标冲突。
 - 预防动作：周期整理必须先运行 `codex-memory dream-report --json`，并以其中的 `status`、`seed`、`context`、`candidates` 与 `imported_events` 作为日报指标和决策入口。Markdown 只作为 legacy import/export 与必要人工审计材料，不再作为主审查面。
-- 合并前验证：`uv run --python 3.11 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.11 codex-memory dream-report --config "${CODEX_HOME}/memory/config.toml" --repo memory --query "memory dream cli" --json`。
+- 合并前验证：`uv run --python 3.12 python -m pytest -q tests/test_cli.py -k dream_report` 通过，并用本机配置 smoke `uv run --python 3.12 codex-memory dream-report --config "${CODEX_HOME}/memory/config.toml" --repo memory --query "memory dream cli" --json`。
 
 ### 5. 会话事件只能归档，不得进入长期召回索引
 

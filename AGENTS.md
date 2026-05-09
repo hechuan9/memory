@@ -3,7 +3,7 @@
 ## 语言与执行
 - 全程使用中文交流。
 - 本仓所有 Python、pytest、脚本命令统一使用 `uv`。
-- 默认 Python 版本固定为 `3.11`。
+- 默认 Python 版本固定为 `3.12`。
 
 ## Public Repo 安全边界
 - 本仓是 public git repo；不得提交本机 SQLite 记忆库、会话 transcript、日志、secrets、API key、私钥或 `.env` 内容。
@@ -18,5 +18,5 @@
 - skill 候选只能写入候选目录，不得自动安装。
 
 ## 验证
-- 初始化：`uv sync --python 3.11 --extra dev`
-- 测试：`uv run --python 3.11 python -m pytest -q`
+- 初始化：`uv sync --python 3.12 --extra dev`
+- 测试：`uv run --python 3.12 python -m pytest -q`

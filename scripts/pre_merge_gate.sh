@@ -21,5 +21,5 @@ require_path "AGENTS.md"
 require_path "docs/MEMORY.md"
 require_path "docs/TODO.md"
 
-run uv sync --python 3.11 --extra dev
-run uv run --python 3.11 python -m pytest -q
+run uv sync --python 3.12 --extra dev
+run uv run --python 3.12 python -m pytest -q
