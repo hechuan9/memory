@@ -68,7 +68,7 @@ def test_recall_prioritizes_repo_then_global_and_hides_candidates(tmp_path):
         repo="model",
         kind="lesson",
         status="active",
-        content="Before model training changes, read docs/ENVIRONMENT.md and docs/MEMORY.md.",
+        content="Before model training changes, read docs/ENVIRONMENT.md and docs/ARCHITECTURE.md.",
         tags=["repo:model"],
     )
     store.upsert_item(
@@ -94,7 +94,7 @@ def test_recall_prioritizes_durable_memory_before_session_events(tmp_path):
         repo="backend",
         kind="session_event",
         status="active",
-        content="backend ENVIRONMENT uv architecture pre_merge_gate " * 8,
+        content="backend ENVIRONMENT uv architecture pytest " * 8,
         tags=["repo:backend", "imported", "codex-conversation"],
     )
     store.upsert_item(
@@ -102,12 +102,12 @@ def test_recall_prioritizes_durable_memory_before_session_events(tmp_path):
         repo="backend",
         kind="lesson",
         status="active",
-        content="Backend changes must read docs/ENVIRONMENT.md and run pre_merge_gate.",
-        source_path="/workspace/backend/docs/MEMORY.md",
+        content="Backend changes must read docs/ENVIRONMENT.md and run pytest.",
+        source_path="/workspace/backend/docs/ARCHITECTURE.md",
         tags=["repo:backend", "source:repo-memory"],
     )
 
-    results = store.recall("backend ENVIRONMENT uv architecture pre_merge_gate", repo="backend", limit=2)
+    results = store.recall("backend ENVIRONMENT uv architecture pytest", repo="backend", limit=2)
 
     assert [item.kind for item in results] == ["lesson", "session_event"]
 

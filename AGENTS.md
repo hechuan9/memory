@@ -8,7 +8,7 @@
 ## Public Repo 安全边界
 - 本仓是 public git repo；不得提交本机 SQLite 记忆库、会话 transcript、日志、secrets、API key、私钥或 `.env` 内容。
 - 示例配置只能放通用字段；具体私有路径只允许出现在用户本机未跟踪的 `config.toml`。
-- 本仓不自动改写用户的全局 Markdown 记忆文件、任何仓库的 `docs/MEMORY.md` 或已安装 skills。
+- 本仓不自动改写用户的全局文件、其他仓库文档或已安装 skills。
 
 ## 设计边界
 - 不使用 MCP、Hindsight runtime、外部云记忆服务或 Codex 之外的本地模型服务。
